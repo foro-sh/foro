@@ -1,0 +1,16 @@
+{
+    "name": "foro-repo",
+    "private": true,
+    "scripts": {
+        "build": "npm --prefix packages/typescript run build"
+    },
+    "devDependencies": {
+        "@commitlint/cli": "^19.6.0",
+        "@commitlint/config-conventional": "^19.6.0",
+        "semantic-release": "^24.0.0",
+        "@semantic-release/changelog": "^6.0.0",
+        "@semantic-release/exec": "^6.0.0",
+        "@semantic-release/git": "^10.0.0",
+        "@semantic-release/github": "^10.0.0"
+    }
+}
