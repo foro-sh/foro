@@ -1,0 +1,29 @@
+[project]
+name = "foro"
+version = "0.1.0"
+description = "Python SDK for Foro"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+authors = [{ name = "Foro" }]
+license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+[project.urls]
+Homepage = "https://github.com/foro-sh/foro"
+Repository = "https://github.com/foro-sh/foro"
+Issues = "https://github.com/foro-sh/foro/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foro"]
+
+[tool.uv]
+dev-dependencies = ["pytest>=8.0"]
