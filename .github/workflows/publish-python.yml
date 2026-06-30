@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/setup-python@82c7e631bb3cdc910f68e0410993293937b3935a # v5.1.0
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v4
+      - uses: astral-sh/setup-uv@a6e6e4e11010466bdf092cc690f215a148601211 # v4.0.0
       - run: uv build
         working-directory: packages/python
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ec4aa4a-4564-4a92-8da0-ce88f6f87fdd # release/v1
         with:
           packages-dir: packages/python/dist/
