@@ -73,3 +73,21 @@ def test_wrong_fastmcp_import_warns_but_passes():
     assert result.ok
     assert len(result.warnings) == 1
     assert "mcp.server.fastmcp" in result.warnings[0]
+
+
+def test_wrong_fastmcp_import_detected_outside_entrypoint(tmp_path):
+    # The recommended structure (foro init's own scaffold) puts FastMCP
+    # construction in app.py, imported by the entrypoint - the wrong-import
+    # scan has to look beyond just the entrypoint file or this regresses
+    # silently for exactly the layout foro init itself now produces.
+    (tmp_path / "foro.yaml").write_text("name: split-server\nentrypoint: server.py\n")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "split-server"\n')
+    (tmp_path / "app.py").write_text(
+        'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("x")\n'
+    )
+    (tmp_path / "server.py").write_text("import foro\nfrom app import mcp\n\nforo.run(mcp)\n")
+
+    result = run_check(tmp_path)
+
+    assert result.ok
+    assert any("app.py" in w and "mcp.server.fastmcp" in w for w in result.warnings)

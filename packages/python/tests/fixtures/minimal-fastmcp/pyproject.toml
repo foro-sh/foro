@@ -2,4 +2,12 @@
 name = "minimal-fastmcp"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastmcp"]
+dependencies = ["fastmcp", "foro"]
+
+# Test fixture only - points `foro` at this repo's own package instead of
+# PyPI, so `uv run`ing this fixture (foro-sh/foro#7's dev tests) never
+# depends on network access or on whatever version happens to be published.
+# A real `foro init` scaffold does not do this - it depends on published
+# `foro` like any other package.
+[tool.uv.sources]
+foro = { path = "../../..", editable = true }

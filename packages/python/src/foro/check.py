@@ -76,9 +76,10 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
                 "would fail the build. Run `uv lock`.",
             )
 
-    if _imports_wrong_fastmcp(entrypoint_path):
+    bad_import_file = _find_wrong_fastmcp_import(build_dir)
+    if bad_import_file:
         warnings.append(
-            f"{manifest.entrypoint} imports `mcp.server.fastmcp` instead of the standalone "
+            f"{bad_import_file} imports `mcp.server.fastmcp` instead of the standalone "
             "`fastmcp` package - the platform's metrics shim won't attach, so tool metrics "
             "won't emit."
         )
@@ -96,9 +97,26 @@ def _uv_lock_in_sync(build_dir: Path) -> bool:
     return result.returncode == 0
 
 
-def _imports_wrong_fastmcp(entrypoint_path: Path) -> bool:
-    try:
-        text = entrypoint_path.read_text()
-    except OSError:
-        return False
-    return _WRONG_FASTMCP_IMPORT in text
+# Directories never worth descending into when scanning for the wrong
+# import - installed packages' own source can contain the literal marker
+# string too (e.g. inside `mcp`/`fastmcp` themselves), which would be a
+# false positive, not the user's code.
+_SCAN_EXCLUDE_DIRS = {".venv", "__pycache__", ".git"}
+
+
+def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
+    """The FastMCP construction that matters doesn't have to live in the
+    entrypoint file - the recommended structure (foro init's own scaffold)
+    puts it in app.py instead, imported by the entrypoint. Scanning every
+    .py file under build_dir (not just the entrypoint) is what keeps this
+    check meaningful for that structure instead of going blind."""
+    for path in sorted(build_dir.rglob("*.py")):
+        if any(part in _SCAN_EXCLUDE_DIRS for part in path.relative_to(build_dir).parts):
+            continue
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        if _WRONG_FASTMCP_IMPORT in text:
+            return str(path.relative_to(build_dir))
+    return None
