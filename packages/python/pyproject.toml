@@ -62,4 +62,7 @@ packages = ["src/foro"]
 # Everything the CLI needs is a base dependency now, so this only adds the
 # test runner on top. PEP 735 spelling, matching what `foro init` scaffolds
 # into a generated project - `[tool.uv] dev-dependencies` is deprecated.
-dev = ["pytest>=8.0"]
+# fastmcp is here rather than in dependencies because `foro.bridge()` imports
+# it lazily, inside the call - the runtime shim stays dependency-light, and a
+# deployed server brings its own fastmcp anyway.
+dev = ["pytest>=8.0", "fastmcp>=2.0"]
