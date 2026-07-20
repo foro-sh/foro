@@ -157,12 +157,14 @@ def _init_from_scratch(target: Path) -> None:
         raise typer.Exit(code=1)
 
     name = _prompt_name(_sanitize_name(target.name))
-    entrypoint = _prompt_entrypoint("server.py")
     python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
     port = _prompt_port(DEFAULT_PORT)
     git_init = typer.confirm("Initialize a git repo here?", default=True)
 
-    fields = ManifestFields(name=name, entrypoint=entrypoint, python_version=python_version, port=port)
+    # Fixed, opinionated structure (app.py + tools/) - not a free-form
+    # filename choice like existing-repo mode's entrypoint. See
+    # scaffold_new's docstring.
+    fields = ManifestFields(name=name, entrypoint="server.py", python_version=python_version, port=port)
     scaffold_new(target, fields, git_init=git_init)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)

@@ -115,16 +115,23 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     scaffold_new(target, fields, git_init=False)
 
     assert (target / "server.py").exists()
+    assert (target / "app.py").exists()
+    assert (target / "tools" / "__init__.py").exists()
+    assert (target / "tools" / "add.py").exists()
+    assert (target / "tests" / "test_tools.py").exists()
     assert (target / "pyproject.toml").exists()
     assert (target / "foro.yaml").exists()
     assert (target / "uv.lock").exists()
+    assert (target / "README.md").exists()
+    assert (target / ".gitignore").exists()
+    assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
 
     manifest = parse_and_validate(target, ".")
     assert manifest.name == "scaffolded"
 
     result = run_check(target)
-    assert result.ok
+    assert result.ok, result.message
 
 
 def test_scaffold_new_git_init(tmp_path):
@@ -137,13 +144,17 @@ def test_scaffold_new_git_init(tmp_path):
 
 
 def test_scaffold_new_respects_custom_entrypoint(tmp_path):
+    # app.py/tools/ are fixed structural filenames, independent of the
+    # entrypoint's own name - "custom entrypoint" only ever means the file
+    # foro.yaml points at as the deploy entrypoint.
     target = tmp_path / "custom-entry"
-    fields = ManifestFields(name="custom-entry", entrypoint="app.py")
+    fields = ManifestFields(name="custom-entry", entrypoint="run.py")
 
     scaffold_new(target, fields, git_init=False)
 
-    assert (target / "app.py").exists()
+    assert (target / "run.py").exists()
     assert not (target / "server.py").exists()
+    assert (target / "app.py").exists()
 
 
 # --- CLI: from-scratch mode ----------------------------------------------
@@ -155,34 +166,15 @@ def test_cli_init_from_scratch(tmp_path):
     result = runner.invoke(
         app,
         ["init", str(target)],
-        input="\n\n\n\nn\n",  # accept name/entrypoint/python_version/port defaults, decline git init
+        input="\n\n\nn\n",  # accept name/python_version/port defaults, decline git init
     )
 
     assert result.exit_code == 0, result.stdout
     assert (target / "foro.yaml").exists()
     manifest = parse_and_validate(target, ".")
     assert manifest.name == "cli-scratch"
-    assert not (target / ".git").exists()
-
-
-def test_cli_init_from_scratch_rejects_non_py_entrypoint_and_reprompts(tmp_path):
-    target = tmp_path / "cli-scratch-bad-entrypoint"
-
-    result = runner.invoke(
-        app,
-        ["init", str(target)],
-        # default name, then a bad entrypoint answer (a port number, not a
-        # path), then a valid one, then the rest as defaults - regression
-        # test for a real report: an unvalidated entrypoint prompt accepted
-        # "8000" verbatim and wrote the server to a file literally named "8000".
-        input="\n8000\nserver.py\n\n\nn\n",
-    )
-
-    assert result.exit_code == 0, result.stdout
-    manifest = parse_and_validate(target, ".")
     assert manifest.entrypoint == "server.py"
-    assert not (target / "8000").exists()
-    assert "must be a relative .py path" in result.stdout
+    assert not (target / ".git").exists()
 
 
 def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):
@@ -212,6 +204,27 @@ def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
     # detected uv.lock -> no explicit override needed
     assert manifest.dependency_manager is None
     assert not (tmp_path / "pyproject.toml").exists()
+
+
+def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path, monkeypatch):
+    (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["init"],
+        # a bad entrypoint answer (a port number, not a path), then a valid
+        # one, then the rest as defaults - regression test for a real
+        # report: an unvalidated Entrypoint prompt accepted "8000" verbatim
+        # and wrote generated server code to a file literally named "8000".
+        input="8000\nserver.py\n\n\n\n\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    manifest = parse_and_validate(tmp_path, ".")
+    assert manifest.entrypoint == "server.py"
+    assert not (tmp_path / "8000").exists()
+    assert "must be a relative .py path" in result.stdout
 
 
 def test_cli_init_existing_repo_declines_overwrite(tmp_path, monkeypatch):
