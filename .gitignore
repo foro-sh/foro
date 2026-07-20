@@ -44,3 +44,6 @@ yarn-debug.log*
 .env
 .env.local
 .env.*.local
+
+# Claude Code worktrees
+.claude/worktrees/
