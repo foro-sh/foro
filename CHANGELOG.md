@@ -1,3 +1,7 @@
+## 1.3.0 (2026-07-20)
+
+* feat(python): add foro check + shared manifest test fixtures ([f1e97a3](https://github.com/foro-sh/foro/commit/f1e97a3))
+
 ## 1.2.0 (2026-07-20)
 
 * feat(python): add foro.run() runtime shim and foro.secret() helper ([864797c](https://github.com/foro-sh/foro/commit/864797c))
