@@ -1,0 +1,107 @@
+[
+  {
+    "name": "minimal-valid",
+    "yaml": "name: my-server\nentrypoint: server.py\n",
+    "expect": { "ok": true }
+  },
+  {
+    "name": "nested-entrypoint",
+    "yaml": "name: my-server\nentrypoint: src/server.py\n",
+    "expect": { "ok": true }
+  },
+  {
+    "name": "all-fields",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: app\npython_version: \"3.11\"\nport: 9000\ndependency_manager: poetry\n",
+    "expect": { "ok": true }
+  },
+  {
+    "name": "unquoted-python-version",
+    "yaml": "name: my-server\nentrypoint: server.py\npython_version: 3.12\n",
+    "expect": { "ok": true }
+  },
+  {
+    "name": "bad-name-uppercase",
+    "yaml": "name: My-Server\nentrypoint: server.py\n",
+    "expect": { "ok": false, "reason": "invalid_name" }
+  },
+  {
+    "name": "bad-name-too-short",
+    "yaml": "name: ab\nentrypoint: server.py\n",
+    "expect": { "ok": false, "reason": "invalid_name" }
+  },
+  {
+    "name": "missing-name",
+    "yaml": "entrypoint: server.py\n",
+    "expect": { "ok": false, "reason": "invalid_name" }
+  },
+  {
+    "name": "bad-entrypoint-traversal",
+    "yaml": "name: my-server\nentrypoint: ../server.py\n",
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "bad-entrypoint-absolute",
+    "yaml": "name: my-server\nentrypoint: /server.py\n",
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "bad-entrypoint-shell-metachar",
+    "yaml": "name: my-server\nentrypoint: \"server.py; rm -rf x\"\n",
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "missing-entrypoint",
+    "yaml": "name: my-server\n",
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "bad-build-path-traversal",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: ../x\n",
+    "expect": { "ok": false, "reason": "invalid_build_path" }
+  },
+  {
+    "name": "bad-python-version",
+    "yaml": "name: my-server\nentrypoint: server.py\npython_version: \"3.9\"\n",
+    "expect": { "ok": false, "reason": "invalid_python_version" }
+  },
+  {
+    "name": "bad-port-too-low",
+    "yaml": "name: my-server\nentrypoint: server.py\nport: 80\n",
+    "expect": { "ok": false, "reason": "invalid_port" }
+  },
+  {
+    "name": "bad-port-too-high",
+    "yaml": "name: my-server\nentrypoint: server.py\nport: 70000\n",
+    "expect": { "ok": false, "reason": "invalid_port" }
+  },
+  {
+    "name": "bad-port-sidecar-reserved",
+    "yaml": "name: my-server\nentrypoint: server.py\nport: 8001\n",
+    "expect": { "ok": false, "reason": "invalid_port" }
+  },
+  {
+    "name": "bad-port-non-integer",
+    "yaml": "name: my-server\nentrypoint: server.py\nport: \"abc\"\n",
+    "expect": { "ok": false, "reason": "invalid_port" }
+  },
+  {
+    "name": "bad-dependency-manager",
+    "yaml": "name: my-server\nentrypoint: server.py\ndependency_manager: pipx\n",
+    "expect": { "ok": false, "reason": "invalid_dependency_manager" }
+  },
+  {
+    "name": "invalid-yaml",
+    "yaml": "name: [unclosed\n",
+    "expect": { "ok": false, "reason": "invalid_yaml" }
+  },
+  {
+    "name": "invalid-shape-scalar",
+    "yaml": "just a string\n",
+    "expect": { "ok": false, "reason": "invalid_shape" }
+  },
+  {
+    "name": "invalid-shape-list",
+    "yaml": "- one\n- two\n",
+    "expect": { "ok": false, "reason": "invalid_shape" }
+  }
+]
