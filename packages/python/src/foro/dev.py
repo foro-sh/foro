@@ -40,8 +40,14 @@ class DevResult:
 
 
 def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) -> subprocess.Popen:
+    from dotenv import dotenv_values
+
     build_dir = repo_dir / build_path
-    env = {**os.environ, "MCP_PORT": str(port)}
+    # A repo-root .env is a local-dev convenience only - the platform injects
+    # secrets as real env vars at deploy time, never a file. Silently a no-op
+    # when .env doesn't exist (dotenv_values returns {} for a missing path).
+    dotenv = {k: v for k, v in dotenv_values(repo_dir / ".env").items() if v is not None}
+    env = {**os.environ, **dotenv, "MCP_PORT": str(port)}
     return subprocess.Popen(
         ["uv", "run", entrypoint],
         cwd=build_dir,

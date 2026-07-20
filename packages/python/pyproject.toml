@@ -17,7 +17,7 @@ classifiers = [
 # The runtime shim (foro.run / foro.secret, foro-sh/foro#3) stays dependency-free
 # so a deployed container never pulls in CLI tooling it doesn't use - only
 # `uv sync`ing this extra (e.g. `uvx 'foro[cli]'`) installs typer.
-cli = ["typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0"]
+cli = ["typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0", "python-dotenv>=1.0"]
 
 [project.scripts]
 foro = "foro.cli:app"
@@ -35,4 +35,4 @@ build-backend = "hatchling.build"
 packages = ["src/foro"]
 
 [tool.uv]
-dev-dependencies = ["pytest>=8.0", "typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0"]
+dev-dependencies = ["pytest>=8.0", "typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0", "python-dotenv>=1.0"]
