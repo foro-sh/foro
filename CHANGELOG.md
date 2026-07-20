@@ -1,3 +1,7 @@
+## 1.4.0 (2026-07-20)
+
+* feat(python): add foro init + foro dev (#15) ([30885b8](https://github.com/foro-sh/foro/commit/30885b8)), closes [#15](https://github.com/foro-sh/foro/issues/15) [foro-sh/foro#5](https://github.com/foro-sh/foro/issues/5) [foro-sh/foro#6](https://github.com/foro-sh/foro/issues/6) [foro-sh/foro#6](https://github.com/foro-sh/foro/issues/6) [#948](https://github.com/foro-sh/foro/issues/948)
+
 ## 1.3.0 (2026-07-20)
 
 * feat(python): add foro check + shared manifest test fixtures ([f1e97a3](https://github.com/foro-sh/foro/commit/f1e97a3))
