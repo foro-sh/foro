@@ -29,15 +29,3 @@ def test_check_fails_invalid_project(tmp_path):
 
     assert result.exit_code == 1
     assert "invalid_name" in result.stdout
-
-
-def test_init_stub():
-    result = runner.invoke(app, ["init"])
-    assert result.exit_code == 0
-    assert "not implemented" in result.stdout
-
-
-def test_dev_stub():
-    result = runner.invoke(app, ["dev"])
-    assert result.exit_code == 0
-    assert "not implemented" in result.stdout
