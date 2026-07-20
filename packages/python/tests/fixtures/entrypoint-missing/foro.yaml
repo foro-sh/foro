@@ -1,0 +1,2 @@
+name: entrypoint-missing
+entrypoint: server.py

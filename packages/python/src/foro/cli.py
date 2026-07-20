@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from importlib.metadata import version
+from pathlib import Path
 
 import typer
+
+from foro.check import run_check
 
 app = typer.Typer(
     name="foro",
@@ -31,9 +34,22 @@ def main(
 
 
 @app.command()
-def check() -> None:
+def check(
+    path: Path = typer.Argument(
+        Path("."), help="Repo directory to validate (default: current directory)."
+    ),
+) -> None:
     """Validate a project against foro.sh's deploy contract."""
-    typer.echo("foro check: not implemented yet - see foro-sh/foro#4")
+    result = run_check(path)
+
+    for warning in result.warnings:
+        typer.secho(f"warning: {warning}", fg=typer.colors.YELLOW)
+
+    if not result.ok:
+        typer.secho(f"✗ {result.message} [{result.reason}]", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    typer.secho("✓ would pass foro.sh's deploy checks", fg=typer.colors.GREEN)
 
 
 @app.command()
