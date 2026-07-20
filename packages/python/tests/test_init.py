@@ -165,6 +165,26 @@ def test_cli_init_from_scratch(tmp_path):
     assert not (target / ".git").exists()
 
 
+def test_cli_init_from_scratch_rejects_non_py_entrypoint_and_reprompts(tmp_path):
+    target = tmp_path / "cli-scratch-bad-entrypoint"
+
+    result = runner.invoke(
+        app,
+        ["init", str(target)],
+        # default name, then a bad entrypoint answer (a port number, not a
+        # path), then a valid one, then the rest as defaults - regression
+        # test for a real report: an unvalidated entrypoint prompt accepted
+        # "8000" verbatim and wrote the server to a file literally named "8000".
+        input="\n8000\nserver.py\n\n\nn\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    manifest = parse_and_validate(target, ".")
+    assert manifest.entrypoint == "server.py"
+    assert not (target / "8000").exists()
+    assert "must be a relative .py path" in result.stdout
+
+
 def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):
     target = tmp_path / "occupied"
     target.mkdir()

@@ -17,6 +17,7 @@ from foro._manifest import (
     PYTHON_VERSIONS,
     SIDECAR_PORT,
     ManifestError,
+    is_valid_entrypoint,
 )
 from foro._python_project import DEPENDENCY_MANAGERS
 from foro.check import run_check
@@ -91,6 +92,18 @@ def _prompt_name(default: str) -> str:
         typer.secho(f"Name must match {NAME_RE.pattern}", fg=typer.colors.RED)
 
 
+def _prompt_entrypoint(default: str) -> str:
+    while True:
+        value = typer.prompt("Entrypoint", default=default)
+        if value.endswith(".py") and is_valid_entrypoint(value):
+            return value
+        typer.secho(
+            "Entrypoint must be a relative .py path within the project "
+            "(no `..` traversal or shell metacharacters)",
+            fg=typer.colors.RED,
+        )
+
+
 def _prompt_python_version(default: str) -> str:
     while True:
         value = typer.prompt(f"Python version ({'/'.join(PYTHON_VERSIONS)})", default=default)
@@ -144,7 +157,7 @@ def _init_from_scratch(target: Path) -> None:
         raise typer.Exit(code=1)
 
     name = _prompt_name(_sanitize_name(target.name))
-    entrypoint = typer.prompt("Entrypoint", default="server.py")
+    entrypoint = _prompt_entrypoint("server.py")
     python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
     port = _prompt_port(DEFAULT_PORT)
     git_init = typer.confirm("Initialize a git repo here?", default=True)
@@ -161,7 +174,7 @@ def _init_existing(dir_path: Path) -> None:
     if len(candidates) > 1:
         typer.echo("Multiple candidate entrypoints found: " + ", ".join(candidates))
     entrypoint_default = candidates[0] if candidates else "server.py"
-    entrypoint = typer.prompt("Entrypoint", default=entrypoint_default)
+    entrypoint = _prompt_entrypoint(entrypoint_default)
 
     # Reuses the platform's own detection signal so the pre-filled answer
     # matches what the platform would infer at deploy time - see
