@@ -82,11 +82,19 @@ def detect_existing_dependency_manager(dir_path: Path) -> str | None:
 
 
 def manifest_yaml(fields: ManifestFields) -> str:
-    doc: dict[str, object] = {"name": fields.name, "entrypoint": fields.entrypoint}
-    if fields.python_version != DEFAULT_PYTHON_VERSION:
-        doc["python_version"] = fields.python_version
-    if fields.port != DEFAULT_PORT:
-        doc["port"] = fields.port
+    # name/entrypoint/python_version/port are always written explicitly,
+    # even when they match the schema's own default - a foro.yaml should be
+    # legible on its own without the reader needing to know the implicit
+    # defaults. dependency_manager stays conditional: unlike the others,
+    # merely mentioning it changes deploy behavior (it's an override, not a
+    # value with an implicit default), so it's only written when it's a real
+    # override from what auto-detection would find anyway.
+    doc: dict[str, object] = {
+        "name": fields.name,
+        "entrypoint": fields.entrypoint,
+        "python_version": fields.python_version,
+        "port": fields.port,
+    }
     if fields.dependency_manager:
         doc["dependency_manager"] = fields.dependency_manager
     return pyyaml.safe_dump(doc, sort_keys=False)

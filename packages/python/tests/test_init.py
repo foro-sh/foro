@@ -63,24 +63,26 @@ def test_detect_dependency_manager_none_when_nothing_present(tmp_path):
 # --- manifest_yaml / write_manifest / existing_manifest_diff ------------
 
 
-def test_manifest_yaml_omits_defaults():
+def test_manifest_yaml_always_includes_name_entrypoint_python_version_port():
     fields = ManifestFields(name="x", entrypoint="server.py")
 
     text = manifest_yaml(fields)
 
-    assert text == "name: x\nentrypoint: server.py\n"
+    assert text == "name: x\nentrypoint: server.py\npython_version: '3.12'\nport: 8000\n"
 
 
-def test_manifest_yaml_includes_non_default_fields():
-    fields = ManifestFields(
-        name="x", entrypoint="server.py", python_version="3.11", port=9000, dependency_manager="poetry"
+def test_manifest_yaml_includes_dependency_manager_only_when_set():
+    without_override = manifest_yaml(ManifestFields(name="x", entrypoint="server.py"))
+    assert "dependency_manager" not in without_override
+
+    with_override = manifest_yaml(
+        ManifestFields(
+            name="x", entrypoint="server.py", python_version="3.11", port=9000, dependency_manager="poetry"
+        )
     )
-
-    text = manifest_yaml(fields)
-
-    assert "python_version: '3.11'" in text or "python_version: \"3.11\"" in text
-    assert "port: 9000" in text
-    assert "dependency_manager: poetry" in text
+    assert "python_version: '3.11'" in with_override
+    assert "port: 9000" in with_override
+    assert "dependency_manager: poetry" in with_override
 
 
 def test_existing_manifest_diff_none_when_no_file(tmp_path):
