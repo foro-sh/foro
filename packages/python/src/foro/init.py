@@ -252,4 +252,8 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
 
     subprocess.run(["uv", "lock"], cwd=dir_path, check=True, capture_output=True)
     if git_init:
-        subprocess.run(["git", "init"], cwd=dir_path, check=True, capture_output=True)
+        init_git_repo(dir_path)
+
+
+def init_git_repo(dir_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=dir_path, check=True, capture_output=True)

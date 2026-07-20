@@ -198,7 +198,8 @@ def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
     (tmp_path / "uv.lock").write_text("")
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["init"], input="\n\n\n\n\n")  # accept all detected defaults
+    # accept all detected defaults, then decline the trailing git-init prompt
+    result = runner.invoke(app, ["init"], input="\n\n\n\n\nn\n")
 
     assert result.exit_code == 0, result.stdout
     manifest = parse_and_validate(tmp_path, ".")
@@ -206,6 +207,31 @@ def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
     # detected uv.lock -> no explicit override needed
     assert manifest.dependency_manager is None
     assert not (tmp_path / "pyproject.toml").exists()
+    assert not (tmp_path / ".git").exists()
+
+
+def test_cli_init_existing_repo_offers_git_init_when_not_already_a_repo(tmp_path, monkeypatch):
+    (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
+    (tmp_path / "uv.lock").write_text("")
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"], input="\n\n\n\n\ny\n")  # accept defaults, confirm git init
+
+    assert result.exit_code == 0, result.stdout
+    assert "Initialize a git repo here?" in result.stdout
+    assert (tmp_path / ".git").is_dir()
+
+
+def test_cli_init_existing_repo_skips_git_prompt_when_already_a_repo(tmp_path, monkeypatch):
+    (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
+    (tmp_path / "uv.lock").write_text("")
+    (tmp_path / ".git").mkdir()  # pretend it's already a repo - no real `git init` needed for this
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["init"], input="\n\n\n\n\n")  # no 6th answer needed - no prompt to consume it
+
+    assert result.exit_code == 0, result.stdout
+    assert "Initialize a git repo here?" not in result.stdout
 
 
 def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path, monkeypatch):
@@ -216,10 +242,11 @@ def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path
         app,
         ["init"],
         # a bad entrypoint answer (a port number, not a path), then a valid
-        # one, then the rest as defaults - regression test for a real
-        # report: an unvalidated Entrypoint prompt accepted "8000" verbatim
-        # and wrote generated server code to a file literally named "8000".
-        input="8000\nserver.py\n\n\n\n\n",
+        # one, then the rest as defaults, then decline git init -
+        # regression test for a real report: an unvalidated Entrypoint
+        # prompt accepted "8000" verbatim and wrote generated server code
+        # to a file literally named "8000".
+        input="8000\nserver.py\n\n\n\n\nn\n",
     )
 
     assert result.exit_code == 0, result.stdout

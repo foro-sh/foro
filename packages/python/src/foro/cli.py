@@ -27,6 +27,7 @@ from foro.init import (
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
     existing_manifest_diff,
+    init_git_repo,
     scaffold_new,
     write_manifest,
 )
@@ -209,6 +210,11 @@ def _init_existing(dir_path: Path) -> None:
 
     write_manifest(dir_path, fields)
     typer.secho(f"✓ wrote {dir_path / 'foro.yaml'}", fg=typer.colors.GREEN)
+
+    # Not already a repo, and deploying to foro.sh means pushing to GitHub -
+    # worth asking here too, not just in from-scratch mode.
+    if not (dir_path / ".git").exists() and typer.confirm("Initialize a git repo here?", default=True):
+        init_git_repo(dir_path)
 
 
 @app.command()
