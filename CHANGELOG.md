@@ -1,3 +1,7 @@
+## 1.1.0 (2026-07-20)
+
+* feat(python): add foro CLI entry point with check/init/dev stubs ([2512608](https://github.com/foro-sh/foro/commit/2512608))
+
 ## 1.0.0 (2026-07-20)
 
 * fix(ci): correct broken commit-sha pins for third-party actions ([46804cc](https://github.com/foro-sh/foro/commit/46804cc))
