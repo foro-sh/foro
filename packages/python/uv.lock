@@ -264,9 +264,7 @@ wheels = [
 name = "foro"
 version = "0.2.0"
 source = { editable = "." }
-
-[package.optional-dependencies]
-cli = [
+dependencies = [
     { name = "anyio" },
     { name = "mcp" },
     { name = "python-dotenv" },
@@ -276,33 +274,21 @@ cli = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "anyio" },
-    { name = "mcp" },
     { name = "pytest" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "anyio", marker = "extra == 'cli'", specifier = ">=4.0" },
-    { name = "mcp", marker = "extra == 'cli'", specifier = ">=1.0" },
-    { name = "python-dotenv", marker = "extra == 'cli'", specifier = ">=1.0" },
-    { name = "pyyaml", marker = "extra == 'cli'", specifier = ">=6.0" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.15" },
-]
-provides-extras = ["cli"]
-
-[package.metadata.requires-dev]
-dev = [
     { name = "anyio", specifier = ">=4.0" },
     { name = "mcp", specifier = ">=1.0" },
-    { name = "pytest", specifier = ">=8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "typer", specifier = ">=0.15" },
 ]
+provides-extras = ["cli"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "h11"
