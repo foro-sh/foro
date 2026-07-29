@@ -1,10 +1,11 @@
 """Runs the shared manifest-cases.json table against _manifest.parse_and_validate.
 
-This table is published in the foro package specifically so
-foro-sh/platform's manifest.test.ts can load and run the same cases against
-its own parseAndValidate - the two sides can never silently drift apart on
-what's valid (see foro-sh/foro#5). The platform-side wiring is a separate,
-linked follow-up in that repo.
+This table is published in both SDK packages specifically so
+foro-sh/platform's manifest.test.ts can run the same cases against its own
+parseAndValidate - the two sides can never silently drift apart on what's
+valid (see foro-sh/foro#5). The platform imports it from
+`@foro-sh/foro/manifest-cases`, which the TypeScript package generates from
+this same JSON at build time (packages/typescript/scripts).
 """
 
 from __future__ import annotations
