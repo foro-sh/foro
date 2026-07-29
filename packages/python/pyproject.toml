@@ -49,7 +49,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/foro"]
 
-[tool.uv]
+[dependency-groups]
 # Everything the CLI needs is a base dependency now, so this only adds the
-# test runner on top.
-dev-dependencies = ["pytest>=8.0"]
+# test runner on top. PEP 735 spelling, matching what `foro init` scaffolds
+# into a generated project - `[tool.uv] dev-dependencies` is deprecated.
+dev = ["pytest>=8.0"]
