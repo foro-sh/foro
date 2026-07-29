@@ -2,9 +2,10 @@
 
 Every rule here must match the platform exactly - `foro check` and the
 platform's build pipeline can never be allowed to silently disagree about
-what's valid. manifest_cases.json is the shared test table both sides run
-(see tests/test_manifest_cases.py here; foro-sh/platform wiring is tracked
-separately, issue #5).
+what's valid. manifest-cases.json is the shared test table both sides run:
+tests/test_manifest_cases.py here, and foro-sh/platform's manifest.test.ts,
+which imports the same table from `@foro-sh/foro/manifest-cases` (issue #5).
+A rule changed on one side without the other fails that table on both.
 """
 
 from __future__ import annotations

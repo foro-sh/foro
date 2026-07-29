@@ -10,13 +10,18 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
             "default": "./dist/index.js"
+        },
+        "./manifest-cases": {
+            "types": "./dist/manifest-cases.d.ts",
+            "import": "./dist/manifest-cases.js",
+            "default": "./dist/manifest-cases.js"
         }
     },
     "files": [
         "dist"
     ],
     "scripts": {
-        "build": "tsc -p tsconfig.json",
+        "build": "node scripts/generate-manifest-cases.mjs && tsc -p tsconfig.json",
         "prepublishOnly": "npm run build",
         "test": "node --test dist/**/*.test.js"
     },

@@ -9,6 +9,10 @@ dist/
 build/
 *.tsbuildinfo
 
+# Inlined at build time from the Python package's manifest-cases.json - the
+# JSON is the single source of truth, this is a derived artifact.
+packages/typescript/src/_generated-manifest-cases.ts
+
 # Python
 *.egg-info/
 .venv/
