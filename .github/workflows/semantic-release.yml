@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
   pull_request:
+  # npm allows exactly one trusted-publisher workflow filename per package,
+  # and it resolves the *calling* workflow - so this file is the only one that
+  # can ever authenticate an npm publish. Manual recovery therefore has to be
+  # dispatched from here rather than from publish-typescript.yml, which cannot
+  # authenticate on its own no matter how it is triggered.
+  workflow_dispatch:
+    inputs:
+      publish_npm:
+        description: Republish the npm package from this ref, without cutting a release.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -158,19 +169,37 @@ jobs:
           packages-dir: packages/python/dist/
 
   # npm's trusted publishing resolves the *calling* workflow's filename, not
-  # the one holding the publish step - the opposite of PyPI. So npm sees this
-  # file on the automatic path, and publish-typescript.yml only on a manual
-  # dispatch; both filenames need a trusted publisher configured on npm.
+  # the one holding the publish step - the opposite of PyPI - and npm allows
+  # only one such filename per package. So every npm publish, automatic or
+  # manual, has to be called from this file for the publisher to match.
+  #
+  # Two ways in, hence the two-armed condition:
+  #   - a release was cut and it touched packages/typescript
+  #   - someone dispatched this workflow with publish_npm (recovery, e.g. the
+  #     release succeeded but the upload failed)
+  #
+  # `always()` is needed because the release job is skipped entirely on a
+  # dispatch, and a skipped dependency would otherwise skip this job too.
+  # needs.release.result is checked explicitly so a *failed* release still
+  # blocks the automatic arm.
   #
   # id-token: write has to be granted here as well as in the called workflow.
   publish-typescript:
     name: Publish TypeScript SDK
     needs: release
-    if: needs.release.outputs.published == 'true' && needs.release.outputs.typescript == 'true'
+    if: >-
+      always() && (
+        (needs.release.result == 'success'
+          && needs.release.outputs.published == 'true'
+          && needs.release.outputs.typescript == 'true')
+        || (github.event_name == 'workflow_dispatch' && inputs.publish_npm)
+      )
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/publish-typescript.yml
     with:
+      # Empty on a dispatch, which makes the called workflow check out the
+      # dispatched ref - main's head, already carrying the version bump.
       ref: ${{ needs.release.outputs.sha }}
     secrets: inherit
