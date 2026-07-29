@@ -157,12 +157,19 @@ jobs:
         with:
           packages-dir: packages/python/dist/
 
+  # npm's trusted publishing resolves the *calling* workflow's filename, not
+  # the one holding the publish step - the opposite of PyPI. So npm sees this
+  # file on the automatic path, and publish-typescript.yml only on a manual
+  # dispatch; both filenames need a trusted publisher configured on npm.
+  #
+  # id-token: write has to be granted here as well as in the called workflow.
   publish-typescript:
     name: Publish TypeScript SDK
     needs: release
     if: needs.release.outputs.published == 'true' && needs.release.outputs.typescript == 'true'
     permissions:
       contents: read
+      id-token: write
     uses: ./.github/workflows/publish-typescript.yml
     with:
       ref: ${{ needs.release.outputs.sha }}

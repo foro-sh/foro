@@ -12,6 +12,14 @@ on:
         required: false
         default: ''
 
+# Required by npm's trusted publishing, and required on *both* this workflow
+# and any workflow that calls it - npm mints the OIDC token in whichever job
+# runs `npm publish`, but the calling job has to be allowed to hand the
+# permission down.
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -20,15 +28,29 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           ref: ${{ inputs.ref }}
+      # Node 22.14+ and npm 11.5.1+ are the floor for trusted publishing. Node
+      # 22 satisfies the runtime half but still ships npm 10.x, so npm is
+      # upgraded explicitly rather than being taken on trust from the image.
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@^11.5.1
+      - name: Confirm npm is new enough to mint an OIDC token
+        run: |
+          version="$(npm --version)"
+          echo "npm $version"
+          # Fail here with a legible message rather than at `npm publish` with
+          # an auth error that looks like a misconfigured trusted publisher.
+          if [ "$(printf '%s\n11.5.1\n' "$version" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "npm $version is older than the 11.5.1 required for trusted publishing" >&2
+            exit 1
+          fi
       - run: npm ci
         working-directory: packages/typescript
       - run: npm run build
         working-directory: packages/typescript
+      # No NODE_AUTH_TOKEN: authentication is the OIDC exchange, so there is no
+      # token to expire and no 2FA-bypass requirement to satisfy.
       - run: npm publish --access public
         working-directory: packages/typescript
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
