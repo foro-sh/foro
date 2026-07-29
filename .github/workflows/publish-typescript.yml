@@ -31,10 +31,14 @@ jobs:
       # Node 22.14+ and npm 11.5.1+ are the floor for trusted publishing. Node
       # 22 satisfies the runtime half but still ships npm 10.x, so npm is
       # upgraded explicitly rather than being taken on trust from the image.
+      # Deliberately no `registry-url`: it makes setup-node write an .npmrc
+      # containing `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`. With
+      # no token in the environment that line still counts as configured auth,
+      # so npm skips the OIDC exchange and the publish 404s. registry.npmjs.org
+      # is the default registry anyway.
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
       - run: npm install -g npm@^11.5.1
       - name: Confirm npm is new enough to mint an OIDC token
         run: |
