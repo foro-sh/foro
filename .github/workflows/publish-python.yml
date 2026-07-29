@@ -1,5 +1,15 @@
 name: Publish Python SDK
 
+# Manual and recovery publishes only - the automatic publish on merge is a job
+# in semantic-release.yml, which duplicates these steps rather than calling
+# this file. PyPI's trusted publishing cannot authorize an upload that runs
+# inside a reusable workflow ("Reusable workflows cannot currently be used as
+# the workflow in a Trusted Publisher"), so `workflow_call` is not an option
+# here and the duplication is deliberate.
+#
+# Keep both trusted publishers configured on PyPI - semantic-release.yml for
+# the automatic path, this file for the manual one. Dispatching builds the
+# branch head, which after a release is the commit carrying the version bump.
 on:
   workflow_dispatch:
 
