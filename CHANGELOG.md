@@ -1,3 +1,8 @@
+## 0.2.0 (2026-07-29)
+
+* feat(typescript): publish the shared manifest-cases table on npm ([4e21f2c](https://github.com/foro-sh/foro/commit/4e21f2c)), closes [foro-sh/foro#5](https://github.com/foro-sh/foro/issues/5)
+* ci: publish each SDK on merge when its package changed, and pin releases to 0.x ([aa1341c](https://github.com/foro-sh/foro/commit/aa1341c))
+
 ## 1.4.0 (2026-07-20)
 
 * feat(python): add foro init + foro dev (#15) ([30885b8](https://github.com/foro-sh/foro/commit/30885b8)), closes [#15](https://github.com/foro-sh/foro/issues/15) [foro-sh/foro#5](https://github.com/foro-sh/foro/issues/5) [foro-sh/foro#6](https://github.com/foro-sh/foro/issues/6) [foro-sh/foro#6](https://github.com/foro-sh/foro/issues/6) [#948](https://github.com/foro-sh/foro/issues/948)
