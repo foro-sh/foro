@@ -7,7 +7,9 @@ things that already exist but that agents can't reach on their own:
 - **The foro.sh docs MCP server** (`docs-mcp.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
-- **Two skills** that encode the `foro init` → `foro.yaml` → push → deploy path.
+- **Four skills** covering both ways in (a new project, or one that already
+  exists), the deploy itself, and the tool design that decides what a server
+  costs to use.
 
 ## Install
 
@@ -47,11 +49,21 @@ Skills are namespaced by the plugin name:
   ships; secrets in the dashboard, never the repo), and finishes with
   `foro check` + `foro dev`, claiming success only on a real local `/mcp`
   response.
+- **`/foro:add-foro-to-existing-server`** — the other way in, for a server that
+  already works locally. Converts the transport (a working local server is
+  almost always on stdio, which never opens a port and fails the deploy health
+  check 60 seconds in), adds `foro.yaml` via `foro init`, and proves it with
+  `foro dev` before anything reaches the cloud.
 - **`/foro:deploy-to-foro`** — get it live. `git init` → commit →
   `gh repo create --push`, then the dashboard step (pick repo, add secrets,
   Deploy — honestly a browser step, there's no user deploy API yet). The result
   is a random, immutable `https://<slug>.foro.sh` URL. When a deploy fails, it
   points at the build-vs-deploy log split and the usual suspects.
+- **`/foro:design-mcp-tools`** — shape the tools themselves. A tool's schema is
+  resent on every request whether it's called or not, so descriptions, enum
+  size, and tool count are a standing cost on every message. Covers the levers
+  in payoff order and ends at the dashboard's real numbers rather than a
+  feeling.
 
 ## Requirements
 
@@ -61,7 +73,12 @@ Skills are namespaced by the plugin name:
 
 ## Scope
 
-Two skills, by design. No hooks, no agents, no LSP config — nothing here needs
-to intercept tool calls or run in the background. A `debug-foro-deploy` skill is
-a plausible third, to be added once we've seen which failures people actually
-hit. No TypeScript-project skill until the TS SDK supports deploys.
+Skills only. No hooks, no agents, no LSP config — nothing here needs to
+intercept tool calls or run in the background.
+
+Deliberately absent: a `debug-foro-deploy` skill. There's no user-facing logs
+API, so it could only say which dashboard tab to open, which `deploy-to-foro`
+already does. Worth writing once we know the top three real failures. Also no
+TypeScript-project skill until the SDK's `foro.bridge()` lands and makes
+non-Python servers deployable — at which point `create-foro-project`'s "Node
+doesn't ship" line needs revisiting too.

@@ -45,9 +45,11 @@ cd <name>
 `foro init` writes a working [FastMCP](https://gofastmcp.com) server, a
 `foro.yaml`, and `pyproject.toml` + `uv.lock`. Read the generated files and
 **explain what they contain** — the entrypoint, the example tool, and how
-`foro.run(...)` starts the server — rather than regenerating them by hand. To
-add `foro.yaml` to an existing repo instead, run `uvx foro init` with no name
-argument from the repo root.
+`foro.run(...)` starts the server — rather than regenerating them by hand.
+
+If the user already has a working MCP server rather than an empty folder, this
+is the wrong skill: use `add-foro-to-existing-server`, which handles the
+transport conversion that porting actually turns on.
 
 ### 2. Explain `foro.yaml` (look up the current fields, don't hardcode them)
 
@@ -97,4 +99,6 @@ scaffolded tool. If it doesn't respond, it isn't done; read the `foro check` /
   secrets live in the dashboard, and the deployed URL is a generated slug, not
   `foro.yaml`'s `name`.
 
-Next: the `deploy-to-foro` skill pushes this to GitHub and gets it live.
+Next: the `deploy-to-foro` skill pushes this to GitHub and gets it live. Before
+replacing the scaffolded example with real tools, the `design-mcp-tools` skill
+covers what makes them cheap to carry and easy for a model to pick correctly.
