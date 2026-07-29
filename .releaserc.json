@@ -21,6 +21,13 @@
                 "changelogFile": "CHANGELOG.md"
             }
         ],
+        [
+            "@semantic-release/exec",
+            {
+                "prepareCmd": "./scripts/set-version.sh ${nextRelease.version}",
+                "successCmd": "./scripts/record-release.sh ${nextRelease.version}"
+            }
+        ],
         "@semantic-release/github",
         [
             "@semantic-release/git",
@@ -28,7 +35,8 @@
                 "assets": [
                     "CHANGELOG.md",
                     "packages/python/pyproject.toml",
-                    "packages/typescript/package.json"
+                    "packages/typescript/package.json",
+                    "packages/typescript/package-lock.json"
                 ]
             }
         ]

@@ -57,6 +57,10 @@ jobs:
     needs: commitlint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.semantic-release.outputs.published }}
+      version: ${{ steps.semantic-release.outputs.version }}
+      sha: ${{ steps.released-commit.outputs.sha }}
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
@@ -75,23 +79,19 @@ jobs:
       - name: Build
         run: npm run build
 
+      # `published` and `version` are written by scripts/record-release.sh via
+      # the exec plugin's successCmd - `npx semantic-release` is a plain shell
+      # command and sets no outputs of its own.
       - name: Release
         id: semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-      - name: Update Python version
-        if: steps.semantic-release.outputs.new-release-published == 'true'
-        run: |
-          VERSION="${{ steps.semantic-release.outputs.new-release-version }}"
-          sed -i "s/version = \"[^\"]*\"/version = \"${VERSION}\"/" packages/python/pyproject.toml
-
-      - name: Commit version updates
-        if: steps.semantic-release.outputs.new-release-published == 'true'
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          git add packages/python/pyproject.toml
-          git commit -m "chore: sync version to ${{ steps.semantic-release.outputs.new-release-version }}" || true
-          git push
+      # The release commit is created and pushed by @semantic-release/git, so
+      # local HEAD now carries the bumped manifests. The publish jobs build
+      # this exact commit rather than a branch name, which would otherwise race
+      # with anything landing on main in the meantime.
+      - name: Record released commit
+        id: released-commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
