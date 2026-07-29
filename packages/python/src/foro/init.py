@@ -190,8 +190,8 @@ An MCP server, deployable on [foro.sh](https://foro.sh).
 ## Develop
 
 ```bash
-uv tool install 'foro[cli]'   # once
-foro dev                      # runs the server exactly as foro.sh will
+uv tool install foro   # once
+foro dev               # runs the server exactly as foro.sh will
 ```
 
 Copy `.env.example` to `.env` and fill in any secrets your tools need -

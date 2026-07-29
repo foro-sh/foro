@@ -34,7 +34,7 @@ the repo, add any secrets your tools need, and deploy.
 
 ## CLI
 
-Install once with `uv tool install 'foro[cli]'`, or run ad-hoc with
+Install once with `uv tool install foro`, or run ad-hoc with
 `uvx foro ...` — no need to add it to your project's own dependencies.
 
 | Command | What it does |

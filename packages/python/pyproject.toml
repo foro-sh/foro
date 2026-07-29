@@ -4,7 +4,22 @@ version = "0.1.0"
 description = "Python SDK for Foro"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+# The CLI's deps live here rather than behind an extra so `uvx foro init`
+# works as documented - an extra would force `uvx 'foro[cli]' init` on every
+# user just to run the tool. The cost this buys back is small: a deployed
+# server already depends on fastmcp, whose tree carries pyyaml, mcp, anyio
+# and python-dotenv (plus click and rich), so the incremental container
+# footprint is typer, shellingham and annotated-doc - three pure-Python
+# wheels. If that ever stops being true, the escape hatch is splitting the
+# dependency-free runtime shim into its own distribution rather than
+# re-hiding the CLI behind an extra.
+dependencies = [
+  "typer>=0.15",
+  "pyyaml>=6.0",
+  "mcp>=1.0",
+  "anyio>=4.0",
+  "python-dotenv>=1.0",
+]
 authors = [{ name = "Foro" }]
 license = { text = "MIT" }
 classifiers = [
@@ -14,10 +29,10 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# The runtime shim (foro.run / foro.secret, foro-sh/foro#3) stays dependency-free
-# so a deployed container never pulls in CLI tooling it doesn't use - only
-# `uv sync`ing this extra (e.g. `uvx 'foro[cli]'`) installs typer.
-cli = ["typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0", "python-dotenv>=1.0"]
+# Kept as an empty alias so the `foro[cli]` spelling that shipped in earlier
+# docs keeps resolving instead of erroring on an unknown extra. Everything it
+# used to pull in is now a base dependency.
+cli = []
 
 [project.scripts]
 foro = "foro.cli:app"
@@ -35,4 +50,6 @@ build-backend = "hatchling.build"
 packages = ["src/foro"]
 
 [tool.uv]
-dev-dependencies = ["pytest>=8.0", "typer>=0.15", "pyyaml>=6.0", "mcp>=1.0", "anyio>=4.0", "python-dotenv>=1.0"]
+# Everything the CLI needs is a base dependency now, so this only adds the
+# test runner on top.
+dev-dependencies = ["pytest>=8.0"]
