@@ -1,3 +1,11 @@
+## <small>0.2.1 (2026-07-29)</small>
+
+* fix(python): make `uvx foro init` work without the cli extra ([4cb45e1](https://github.com/foro-sh/foro/commit/4cb45e1))
+* ci: authenticate npm publishes with trusted publishing ([b635aa7](https://github.com/foro-sh/foro/commit/b635aa7))
+* ci: relock uv.lock when stamping the release version ([b14228f](https://github.com/foro-sh/foro/commit/b14228f))
+* ci: route every npm publish through the release workflow ([da95042](https://github.com/foro-sh/foro/commit/da95042))
+* ci: stop setup-node writing an npmrc that suppresses npm OIDC ([fa938b5](https://github.com/foro-sh/foro/commit/fa938b5))
+
 ## 0.2.0 (2026-07-29)
 
 * feat(typescript): publish the shared manifest-cases table on npm ([4e21f2c](https://github.com/foro-sh/foro/commit/4e21f2c)), closes [foro-sh/foro#5](https://github.com/foro-sh/foro/issues/5)
