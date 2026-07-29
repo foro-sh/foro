@@ -1,0 +1,17 @@
+{
+  "name": "foro",
+  "owner": {
+    "name": "foro.sh",
+    "url": "https://foro.sh"
+  },
+  "description": "Plugins for building and deploying MCP servers on foro.sh.",
+  "plugins": [
+    {
+      "name": "foro",
+      "source": "./plugins/claude-code",
+      "description": "Take a repo from empty folder to a deployed MCP server on foro.sh — bundles the docs MCP plus create/deploy skills.",
+      "homepage": "https://foro.sh",
+      "license": "MIT"
+    }
+  ]
+}
