@@ -1,3 +1,7 @@
+## 0.5.0 (2026-07-29)
+
+* feat(plugin): add the foro Codex plugin with docs MCP and shared skills ([cf3466f](https://github.com/foro-sh/foro/commit/cf3466f))
+
 ## 0.4.0 (2026-07-29)
 
 * docs(plugin): run foro init with --yes in the skills ([a277ac8](https://github.com/foro-sh/foro/commit/a277ac8))
