@@ -1,6 +1,6 @@
 ---
 name: deploy-to-foro
-description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL. Use when the user wants to deploy, ship, publish, or go live with a foro.yaml project on foro.sh, or when a foro.sh deploy has failed and they need help reading the logs. Assumes the repo already passes `foro check` (see `/foro:create-foro-project`).
+description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL. Use when the user wants to deploy, ship, publish, or go live with a foro.yaml project on foro.sh, or when a foro.sh deploy has failed and they need help reading the logs. Assumes the repo already passes `foro check` (see the create-foro-project skill).
 ---
 
 # Deploy a project to foro.sh
@@ -17,8 +17,10 @@ Confirm the repo is actually deployable before pushing:
 uvx foro check
 ```
 
-If it doesn't pass, stop and fix that first (`/foro:create-foro-project` covers
-scaffolding and the constraints). A repo `foro check` flags will not deploy.
+If it doesn't pass, stop and fix that first (the `create-foro-project` skill
+covers scaffolding and the constraints). A repo `foro check` flags will not
+deploy. Warnings are worth reading too — they don't block a deploy, but they
+name what will be slow or non-reproducible about it.
 
 ## 1. Get the code on GitHub
 
@@ -31,8 +33,11 @@ git commit -m "init"
 gh repo create --push        # creates the GitHub repo and pushes in one step
 ```
 
-Make sure `uv.lock` is committed — it's part of what makes the build
-reproducible, and a missing lockfile is a common deploy failure.
+Commit the lockfile — `uv.lock`, `pdm.lock`, `poetry.lock`, or `Pipfile.lock`,
+whichever your dependency manager writes. Without one the build still runs, but
+as a slower unlocked install with no reproducibility guarantee. A lockfile that
+is *out of sync* with `pyproject.toml` is worse than none: the build installs
+with `--frozen` and fails outright.
 
 ## 2. Deploy from the dashboard (this part is a browser step)
 
@@ -67,7 +72,7 @@ the dashboard once the deploy finishes.
 foro.sh splits logs into two streams — check the right one:
 
 - **Build log** — raw `docker build` output. Look here for dependency/lockfile
-  problems: a missing or stale `uv.lock`, a package that won't install, a bad
+  problems: a stale lockfile, a package that won't install, a bad
   `python_version`.
 - **Deploy log** — the orchestration narrative: clone, `foro.yaml` validation,
   container start, health check, and the failure reason. Look here for a wrong
@@ -76,7 +81,8 @@ foro.sh splits logs into two streams — check the right one:
 
 Usual suspects, in rough order of frequency:
 
-1. **Missing `uv.lock`** — commit it and push again.
+1. **Stale lockfile** — the lockfile no longer matches `pyproject.toml`, so the
+   frozen install fails. Re-lock (`uv lock`, `poetry lock`, …), commit, push.
 2. **Wrong `entrypoint`** in `foro.yaml` — it must point at the file that calls
    `foro.run(...)`.
 3. **Unset secret** — the code calls `foro.secret("NAME")` but `NAME` wasn't

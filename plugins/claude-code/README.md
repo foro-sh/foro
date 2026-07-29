@@ -43,9 +43,10 @@ Skills are namespaced by the plugin name:
 - **`/foro:create-foro-project`** — scaffold a deployable MCP server. Runs
   `uvx foro init`, explains the generated `foro.yaml` (pulling the current
   field list from `foro-docs`), states the two constraints that trip up first
-  deploys (Python + `uv` only; secrets in the dashboard, never the repo), and
-  finishes with `foro check` + `foro dev`, claiming success only on a real
-  local `/mcp` response.
+  deploys (Python only — though any of uv/PDM/Poetry/pipenv/`requirements.txt`
+  ships; secrets in the dashboard, never the repo), and finishes with
+  `foro check` + `foro dev`, claiming success only on a real local `/mcp`
+  response.
 - **`/foro:deploy-to-foro`** — get it live. `git init` → commit →
   `gh repo create --push`, then the dashboard step (pick repo, add secrets,
   Deploy — honestly a browser step, there's no user deploy API yet). The result
