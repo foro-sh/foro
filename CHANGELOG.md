@@ -1,3 +1,7 @@
+## 0.3.0 (2026-07-29)
+
+* feat(plugin): foro Claude Code plugin — docs MCP + create/deploy skills (#21) ([1b726f0](https://github.com/foro-sh/foro/commit/1b726f0)), closes [#21](https://github.com/foro-sh/foro/issues/21)
+
 ## <small>0.2.1 (2026-07-29)</small>
 
 * fix(python): make `uvx foro init` work without the cli extra ([4cb45e1](https://github.com/foro-sh/foro/commit/4cb45e1))
