@@ -39,7 +39,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 
 | Command | What it does |
 | --- | --- |
-| `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument) |
+| `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
 
