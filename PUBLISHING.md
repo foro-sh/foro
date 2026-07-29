@@ -72,8 +72,33 @@ after a release is the commit with the bumped version.
 
 ## Credentials
 
-- **PyPI** — trusted publishing (OIDC), no stored token.
-- **npm** — `NPM_TOKEN` repository secret, used by the `npm` environment.
+Both registries use trusted publishing (OIDC). There is no stored token for
+either, so nothing expires and no 2FA-bypass token is needed.
+
+Each registry resolves the workflow filename differently, and in opposite
+directions — so each needs **two** publishers configured, one per path:
+
+| Registry | Automatic path (on merge) | Manual dispatch |
+| --- | --- | --- |
+| PyPI | `semantic-release.yml` | `publish-python.yml` |
+| npm | `semantic-release.yml` | `publish-typescript.yml` |
+
+Both use environment `npm` / `pypi` respectively, matching the `environment:`
+on the job that performs the upload.
+
+They land on the same table for opposite reasons. PyPI [cannot authorize an
+upload inside a reusable workflow][pypi-reusable] at all, so its steps are
+duplicated into `semantic-release.yml`. npm can, but [resolves the *calling*
+workflow's filename][npm-reusable] rather than the one holding the publish
+step — so the reusable call is fine, and npm simply sees `semantic-release.yml`
+on the automatic path.
+
+npm additionally requires npm ≥ 11.5.1, Node ≥ 22.14, and `id-token: write` on
+**both** the calling and the called workflow. `publish-typescript.yml` asserts
+the npm version explicitly, so a runner image shipping an older npm fails with
+a legible message instead of an auth error that looks like a broken publisher.
+
+[npm-reusable]: https://docs.npmjs.com/trusted-publishers
 
 ### Why the PyPI upload is duplicated
 
