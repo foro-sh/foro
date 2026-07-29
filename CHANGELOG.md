@@ -1,3 +1,8 @@
+## 0.4.0 (2026-07-29)
+
+* docs(plugin): run foro init with --yes in the skills ([a277ac8](https://github.com/foro-sh/foro/commit/a277ac8))
+* feat(python): add --yes to foro init ([649b04c](https://github.com/foro-sh/foro/commit/649b04c))
+
 ## 0.3.0 (2026-07-29)
 
 * feat(plugin): foro Claude Code plugin — docs MCP + create/deploy skills (#21) ([1b726f0](https://github.com/foro-sh/foro/commit/1b726f0)), closes [#21](https://github.com/foro-sh/foro/issues/21)
