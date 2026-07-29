@@ -1,0 +1,19 @@
+{
+  "name": "foro",
+  "interface": {
+    "displayName": "foro.sh"
+  },
+  "plugins": [
+    {
+      "name": "foro",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
