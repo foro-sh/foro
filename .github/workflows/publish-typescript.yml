@@ -1,7 +1,12 @@
 name: Publish TypeScript SDK
 
+# Callable only, deliberately. npm permits one trusted-publisher filename per
+# package and resolves the calling workflow, so that filename has to be
+# semantic-release.yml - which leaves this file unable to authenticate a
+# publish when triggered directly. A workflow_dispatch here would present a
+# working button that always fails ENEEDAUTH. Manual republishes go through
+# `Semantic Release` with the publish_npm input instead.
 on:
-  workflow_dispatch:
   workflow_call:
     inputs:
       ref:

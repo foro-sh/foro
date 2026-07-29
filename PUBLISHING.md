@@ -65,26 +65,36 @@ next breaking change then bumps to `1.0.0` on its own.
 
 ## Manual publishing
 
-Both publish workflows keep a `workflow_dispatch` trigger for recovery — if a
-publish job fails after the release was tagged, re-run it from the Actions tab
+If an upload fails after the release was tagged, republish from the Actions tab
 rather than cutting another release. Dispatching builds the branch head, which
-after a release is the commit with the bumped version.
+after a release is the commit carrying the version bump.
+
+- **PyPI** — dispatch **Publish Python SDK**.
+- **npm** — dispatch **Semantic Release** with `publish_npm` checked. It skips
+  the release itself and only runs the npm upload. Dispatching *Publish
+  TypeScript SDK* directly is not possible, by design — see above.
 
 ## Credentials
 
 Both registries use trusted publishing (OIDC). There is no stored token for
 either, so nothing expires and no 2FA-bypass token is needed.
 
-Each registry resolves the workflow filename differently, and in opposite
-directions — so each needs **two** publishers configured, one per path:
-
-| Registry | Automatic path (on merge) | Manual dispatch |
+| Registry | Publisher workflow filename | Environment |
 | --- | --- | --- |
-| PyPI | `semantic-release.yml` | `publish-python.yml` |
-| npm | `semantic-release.yml` | `publish-typescript.yml` |
+| PyPI | `semantic-release.yml` (automatic) **and** `publish-python.yml` (manual) | `pypi` |
+| npm | `semantic-release.yml` — one only | `npm` |
 
-Both use environment `npm` / `pypi` respectively, matching the `environment:`
-on the job that performs the upload.
+The environment must match the `environment:` on the job performing the
+upload.
+
+npm permits only **one** trusted-publisher filename per package, and resolves
+the *calling* workflow — so `semantic-release.yml` is the only filename that
+can ever authenticate an npm publish. Every npm upload, automatic or manual,
+is therefore called from that file. `publish-typescript.yml` is
+`workflow_call`-only for this reason: triggered directly it would fail
+`ENEEDAUTH`, so it deliberately offers no button that cannot work.
+
+PyPI allows several publishers, so it keeps a genuine manual path.
 
 They land on the same table for opposite reasons. PyPI [cannot authorize an
 upload inside a reusable workflow][pypi-reusable] at all, so its steps are
