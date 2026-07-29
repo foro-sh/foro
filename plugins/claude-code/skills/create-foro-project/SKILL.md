@@ -38,9 +38,14 @@ Run the CLI (no need to add `foro` to the project's own dependencies; `uvx`
 runs it whatever the project itself is managed with):
 
 ```bash
-uvx foro init <name>
+uvx foro init <name> --yes
 cd <name>
 ```
+
+`--yes` takes every default (name from the directory, Python 3.12, port 8000,
+git init) instead of prompting. You are running this non-interactively, so
+without it `foro init` blocks on its first prompt and aborts. Drop the flag
+only when the user is running the command themselves and wants to answer.
 
 `foro init` writes a working [FastMCP](https://gofastmcp.com) server, a
 `foro.yaml`, and `pyproject.toml` + `uv.lock`. Read the generated files and

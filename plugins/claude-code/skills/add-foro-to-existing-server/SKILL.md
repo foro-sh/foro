@@ -58,15 +58,17 @@ one.
 ### 3. Add the manifest
 
 ```bash
-uvx foro init          # no name argument = add foro.yaml to this repo
+uvx foro init --yes    # no name argument = add foro.yaml to this repo
 ```
 
-It detects candidate entrypoints and the dependency manager, then prompts for
-the name, Python version, and port, pre-filled with what it found. Accept the
-detected dependency manager unless you know it guessed wrong — it uses the same
-signal the platform will use at deploy time, and the field is only written to
-`foro.yaml` when it disagrees with detection. If a `foro.yaml` already exists,
-it shows a diff and asks before overwriting.
+It detects candidate entrypoints and the dependency manager, then fills in the
+name, Python version, and port from what it found. `--yes` accepts all of that
+without prompting — required here, since prompting a non-interactive run just
+aborts it. Detection uses the same signal the platform will use at deploy time,
+and the dependency manager is only written to `foro.yaml` when it disagrees
+with detection; if it guessed wrong, edit the file afterwards rather than
+dropping `--yes`. An existing `foro.yaml` is never overwritten under `--yes` —
+init prints the diff and stops, so reconcile it by hand.
 
 Call `foro-docs.read_doc("foro-yaml")` for the current field reference rather
 than reciting fields from memory.
