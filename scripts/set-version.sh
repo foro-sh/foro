@@ -41,4 +41,11 @@ PY
 npm --prefix "$ROOT/packages/typescript" version "$VERSION" \
   --no-git-tag-version --allow-same-version >/dev/null
 
+# uv.lock records the project's own version, so rewriting pyproject.toml
+# without relocking leaves the two disagreeing and `uv sync --frozen` fails.
+# It hides easily: `uv run` silently relocks, so local work keeps passing
+# while the committed lockfile is stale - and `foro check`, the contract this
+# SDK enforces on other repos, reports lockfile_out_of_sync against its own.
+uv lock --project "$ROOT/packages/python" --quiet
+
 echo "set version to $VERSION"
