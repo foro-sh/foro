@@ -1,6 +1,7 @@
 {
-  "mcp_servers": {
+  "mcpServers": {
     "foro-docs": {
+      "type": "http",
       "url": "https://docs-mcp.foro.sh/mcp"
     }
   }
