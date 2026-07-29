@@ -85,9 +85,26 @@ def _sanitize_name(raw: str) -> str:
     return slug[:48] or "my-server"
 
 
+# ponytail: a module global rather than a `yes` parameter threaded through
+# both init modes and all six prompt helpers - `--yes` is set once, at the
+# only entrypoint that can set it.
+_assume_yes = False
+
+
+def _prompt(*args, default, **kwargs):
+    """Under `--yes`, every prompt answers itself with its default. The
+    defaults are the same values the validation loops accept, so callers keep
+    their loop and simply pass through on the first iteration."""
+    return default if _assume_yes else typer.prompt(*args, default=default, **kwargs)
+
+
+def _confirm(text: str, *, default: bool) -> bool:
+    return default if _assume_yes else typer.confirm(text, default=default)
+
+
 def _prompt_name(default: str) -> str:
     while True:
-        value = typer.prompt("Project name", default=default)
+        value = _prompt("Project name", default=default)
         if NAME_RE.match(value):
             return value
         typer.secho(f"Name must match {NAME_RE.pattern}", fg=typer.colors.RED)
@@ -95,7 +112,7 @@ def _prompt_name(default: str) -> str:
 
 def _prompt_entrypoint(default: str) -> str:
     while True:
-        value = typer.prompt("Entrypoint", default=default)
+        value = _prompt("Entrypoint", default=default)
         if value.endswith(".py") and is_valid_entrypoint(value):
             return value
         typer.secho(
@@ -107,7 +124,7 @@ def _prompt_entrypoint(default: str) -> str:
 
 def _prompt_python_version(default: str) -> str:
     while True:
-        value = typer.prompt(f"Python version ({'/'.join(PYTHON_VERSIONS)})", default=default)
+        value = _prompt(f"Python version ({'/'.join(PYTHON_VERSIONS)})", default=default)
         if value in PYTHON_VERSIONS:
             return value
         typer.secho(f"Must be one of {', '.join(PYTHON_VERSIONS)}", fg=typer.colors.RED)
@@ -115,7 +132,7 @@ def _prompt_python_version(default: str) -> str:
 
 def _prompt_dependency_manager(default: str) -> str:
     while True:
-        value = typer.prompt("Dependency manager", default=default)
+        value = _prompt("Dependency manager", default=default)
         if value in DEPENDENCY_MANAGERS:
             return value
         typer.secho(f"Must be one of {', '.join(DEPENDENCY_MANAGERS)}", fg=typer.colors.RED)
@@ -123,7 +140,7 @@ def _prompt_dependency_manager(default: str) -> str:
 
 def _prompt_port(default: int) -> int:
     while True:
-        value = typer.prompt("Port", default=default, type=int)
+        value = _prompt("Port", default=default, type=int)
         if MIN_PORT <= value <= MAX_PORT and value != SIDECAR_PORT:
             return value
         typer.secho(
@@ -140,8 +157,19 @@ def init(
         help="Directory to scaffold a new project into. Omit to add foro.yaml "
         "to the current directory instead.",
     ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Accept every default instead of prompting, so init runs "
+        "unattended (in CI, or when an agent drives it). An existing "
+        "foro.yaml is still never overwritten.",
+    ),
 ) -> None:
     """Scaffold a new MCP server, or add foro.yaml to an existing one."""
+    global _assume_yes
+    _assume_yes = yes
+
     if name is not None:
         _init_from_scratch(Path(name))
     else:
@@ -160,7 +188,7 @@ def _init_from_scratch(target: Path) -> None:
     name = _prompt_name(_sanitize_name(target.name))
     python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
     port = _prompt_port(DEFAULT_PORT)
-    git_init = typer.confirm("Initialize a git repo here?", default=True)
+    git_init = _confirm("Initialize a git repo here?", default=True)
 
     # Fixed, opinionated structure (app.py + tools/) - not a free-form
     # filename choice like existing-repo mode's entrypoint. See
@@ -204,7 +232,7 @@ def _init_existing(dir_path: Path) -> None:
     if diff:
         typer.echo("foro.yaml already exists. Diff:")
         typer.echo(diff)
-        if not typer.confirm("Overwrite?", default=False):
+        if not _confirm("Overwrite?", default=False):
             typer.echo("Aborted.")
             raise typer.Exit(code=1)
 
@@ -213,7 +241,7 @@ def _init_existing(dir_path: Path) -> None:
 
     # Not already a repo, and deploying to foro.sh means pushing to GitHub -
     # worth asking here too, not just in from-scratch mode.
-    if not (dir_path / ".git").exists() and typer.confirm("Initialize a git repo here?", default=True):
+    if not (dir_path / ".git").exists() and _confirm("Initialize a git repo here?", default=True):
         init_git_repo(dir_path)
 
 
