@@ -1,0 +1,34 @@
+{
+  "name": "foro",
+  "version": "0.1.0",
+  "description": "Take a repo from empty folder to a deployed MCP server on foro.sh — bundles the foro.sh docs MCP plus skills for the init -> foro.yaml -> push -> deploy path.",
+  "author": {
+    "name": "foro.sh",
+    "url": "https://foro.sh"
+  },
+  "homepage": "https://foro.sh",
+  "repository": "https://github.com/foro-sh/foro",
+  "license": "MIT",
+  "keywords": ["foro", "mcp", "deploy", "fastmcp", "uv"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "foro",
+    "developerName": "foro.sh",
+    "shortDescription": "Build and deploy MCP servers on foro.sh",
+    "longDescription": "foro.sh deploys a Python MCP server from a Git repo to a stable public URL on sovereign EU infrastructure. This plugin bundles the foro.sh docs as an MCP server, so guidance stays current instead of going stale, plus two skills that cover the whole path: scaffolding a project that passes the platform's deploy checks, and getting it live at https://<slug>.foro.sh.",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://foro.sh",
+    "privacyPolicyURL": "https://foro.sh/privacy",
+    "termsOfServiceURL": "https://foro.sh/terms",
+    "defaultPrompt": [
+      "Use foro to scaffold a new MCP server I can deploy.",
+      "Use foro to get this MCP server live on foro.sh.",
+      "Use foro to explain why my foro.sh deploy failed."
+    ],
+    "brandColor": "#A6431C",
+    "logo": "./assets/logo.png",
+    "composerIcon": "./assets/icon.png"
+  }
+}

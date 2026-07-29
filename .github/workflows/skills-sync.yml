@@ -1,0 +1,27 @@
+name: Skills Sync
+
+# The Claude Code and Codex plugins ship the same two skills. A symlink would
+# be cheaper, but Codex requires manifest paths to stay inside the plugin root,
+# so both trees hold real files and this job keeps them honest.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  diff:
+    name: Plugin skills are identical
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          persist-credentials: false
+
+      - name: Compare skill trees
+        run: |
+          diff -r plugins/claude-code/skills plugins/codex/skills || {
+            echo "::error::Plugin skills have drifted. plugins/claude-code/skills is canonical - resync with:"
+            echo "::error::  rm -rf plugins/codex/skills && cp -R plugins/claude-code/skills plugins/codex/skills"
+            exit 1
+          }
