@@ -57,6 +57,12 @@ jobs:
     needs: commitlint
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.semantic-release.outputs.published }}
+      version: ${{ steps.semantic-release.outputs.version }}
+      sha: ${{ steps.released-commit.outputs.sha }}
+      python: ${{ steps.changed.outputs.python }}
+      typescript: ${{ steps.changed.outputs.typescript }}
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
@@ -72,26 +78,92 @@ jobs:
       - name: Install dependencies
         run: npm install --no-fund --no-audit
 
+      # Must run before the release step: semantic-release's own
+      # `chore(release):` commit rewrites both manifests, so measuring after it
+      # would report every package as changed on every single release.
+      - name: Detect changed packages
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$BEFORE" ] \
+            || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            # First push to the branch, or a force-push that orphaned the old
+            # tip - neither leaves a usable range, so fall back to this commit.
+            base="HEAD~1"
+          else
+            base="$BEFORE"
+          fi
+
+          files="$(git diff --name-only "$base" HEAD)"
+          echo "comparing ${base}..HEAD"
+          echo "$files"
+
+          for package in python typescript; do
+            if printf '%s\n' "$files" | grep -q "^packages/${package}/"; then
+              echo "${package}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${package}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
       - name: Build
         run: npm run build
 
+      # `published` and `version` are written by scripts/record-release.sh via
+      # the exec plugin's successCmd - `npx semantic-release` is a plain shell
+      # command and sets no outputs of its own.
       - name: Release
         id: semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-      - name: Update Python version
-        if: steps.semantic-release.outputs.new-release-published == 'true'
-        run: |
-          VERSION="${{ steps.semantic-release.outputs.new-release-version }}"
-          sed -i "s/version = \"[^\"]*\"/version = \"${VERSION}\"/" packages/python/pyproject.toml
+      # The release commit is created and pushed by @semantic-release/git, so
+      # local HEAD now carries the bumped manifests. The publish jobs build
+      # this exact commit rather than a branch name, which would otherwise race
+      # with anything landing on main in the meantime.
+      - name: Record released commit
+        id: released-commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit version updates
-        if: steps.semantic-release.outputs.new-release-published == 'true'
-        run: |
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-          git add packages/python/pyproject.toml
-          git commit -m "chore: sync version to ${{ steps.semantic-release.outputs.new-release-version }}" || true
-          git push
+  # These steps duplicate publish-python.yml rather than calling it. PyPI's
+  # trusted publishing cannot authorize an upload that runs inside a reusable
+  # workflow, so `uses:` is not available here - the upload has to sit in the
+  # workflow that PyPI is configured to trust. publish-python.yml stays as the
+  # manual recovery path; both files need a trusted publisher on PyPI.
+  publish-python:
+    name: Publish Python SDK
+    needs: release
+    if: needs.release.outputs.published == 'true' && needs.release.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d8db0a86d3d88f3017a4e6b8a1e2b234e7a0a1b5 # v4.0.0
+      - run: uv build
+        working-directory: packages/python
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          packages-dir: packages/python/dist/
+
+  publish-typescript:
+    name: Publish TypeScript SDK
+    needs: release
+    if: needs.release.outputs.published == 'true' && needs.release.outputs.typescript == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/publish-typescript.yml
+    with:
+      ref: ${{ needs.release.outputs.sha }}
+    secrets: inherit
