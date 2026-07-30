@@ -125,6 +125,7 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "foro.yaml").exists()
     assert (target / "uv.lock").exists()
     assert (target / "README.md").exists()
+    assert (target / "AGENTS.md").exists()
     assert (target / ".gitignore").exists()
     assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
@@ -134,6 +135,22 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
 
     result = run_check(target)
     assert result.ok, result.message
+
+
+def test_scaffolded_agents_md_carries_the_deploy_contract(tmp_path):
+    """The point of the file is the footguns, not the prose - an agent that
+    reads it must come away knowing not to reach for mcp.run() or to drop a
+    tool in tools/ without importing it."""
+    target = tmp_path / "scaffolded"
+    scaffold_new(target, ManifestFields(name="scaffolded", entrypoint="server.py"), git_init=False)
+
+    agents = (target / "AGENTS.md").read_text()
+
+    assert "foro.run(mcp)" in agents
+    assert "mcp.run()" in agents
+    assert "tools/__init__.py" in agents
+    assert 'foro.secret("NAME")' in agents
+    assert "foro check" in agents and "foro dev" in agents
 
 
 def test_scaffold_new_git_init(tmp_path):

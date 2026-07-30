@@ -206,7 +206,81 @@ uv run pytest
 
 ## Deploy
 
-Push this repo to GitHub, then connect it from the foro.sh dashboard.
+```bash
+uvx foro auth login   # once per machine
+uvx foro deploy
+```
+
+`foro deploy` packages this directory, ships it, and streams the build until
+it's live at a generated `https://<slug>.foro.sh` URL.
+'''
+
+# Scaffolded so an agent working in this repo has the deploy contract even
+# without a foro plugin installed - which is most agents. Deliberately the
+# contract and its footguns only, not a tutorial: everything here is something
+# that fails a deploy or fails it late, and nothing here is discoverable by
+# reading the generated code.
+_AGENTS_TEMPLATE = '''# Agent instructions
+
+This is a [foro.sh](https://foro.sh) MCP server: a Python FastMCP server that
+deploys to a public URL. The rules below are the platform's deploy contract.
+Breaking one usually fails *late* - a green build, then a 60-second health-check
+timeout with no obvious cause.
+
+## Serving
+
+- **Start the server with `foro.run(mcp)`, never `mcp.run()`.** A bare
+  `mcp.run()` serves stdio, which never opens a port, and the platform starts
+  the container and probes a TCP port. Nothing looks wrong with the tools; the
+  server just never listens.
+- **Never hardcode a host or port.** `foro.run()` binds `0.0.0.0:$MCP_PORT`,
+  which is what the health check probes. `127.0.0.1` or a fixed port that
+  disagrees with `foro.yaml` fails in a way that reads like a crash.
+- `server.py` is the entrypoint `foro.yaml` points at. If you rename it, update
+  `foro.yaml`'s `entrypoint` in the same change.
+
+## Tools
+
+- One tool per file in `tools/`, each doing `from app import mcp` and decorating
+  its function with `@mcp.tool`.
+- **Add every new tool module to the imports in `tools/__init__.py`.** A file in
+  `tools/` that isn't imported there registers nothing, and the symptom is an
+  empty tool list on a server that otherwise looks healthy.
+- Type the parameters and describe the tool - a calling model picks on the
+  description, and the whole tool list is resent on every request whether it's
+  called or not.
+
+## Secrets
+
+- Read them with `foro.secret("NAME")`, which raises an error naming where to
+  set it. Never `os.environ[...]` with a silent default.
+- Real values go in the project's Secrets tab on the foro.sh dashboard and
+  arrive as environment variables at deploy time. `.env` is for local runs only
+  (`foro dev` loads it) and is never committed or deployed.
+
+## Before every deploy
+
+```bash
+uvx foro check    # manifest, entrypoint, lockfile - the platform's own rules
+uvx foro dev      # runs it as the platform will, and probes the port
+```
+
+`foro check` mirrors the platform's validation rule for rule. `foro dev` is what
+catches the serving mistakes above, in seconds instead of in the cloud a minute
+later. Don't report the server as working off a banner - hit the `/mcp` path it
+prints and confirm a real `tools/list` naming the tools you built.
+
+Commit the lockfile. One that is *out of sync* with `pyproject.toml` is worse
+than none: the build installs `--frozen` and fails outright.
+
+## Deploying
+
+`uvx foro deploy` packages this directory and streams the build. It needs a
+one-time `uvx foro auth login`, which requires a human to approve a code in a
+browser - that step cannot be automated.
+
+The deployed URL is a **generated, immutable slug** (`https://<slug>.foro.sh`).
+`name` in `foro.yaml` is a display name and has no effect on the URL.
 '''
 
 _GITIGNORE_TEMPLATE = '''.venv/
@@ -231,8 +305,8 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     """Write a from-scratch project: app.py, server.py (the entrypoint -
     foro.yaml always points here), tools/, pyproject.toml, foro.yaml, a
     locked uv.lock (`uv lock`, so the golden round-trip - init's output
-    must pass check - holds without a manual step), README.md, .gitignore,
-    .env.example, and tests/."""
+    must pass check - holds without a manual step), README.md, AGENTS.md,
+    .gitignore, .env.example, and tests/."""
     dir_path.mkdir(parents=True, exist_ok=True)
     tools_dir = dir_path / "tools"
     tests_dir = dir_path / "tests"
@@ -248,6 +322,7 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version)
     )
     (dir_path / "README.md").write_text(_README_TEMPLATE.format(name=fields.name))
+    (dir_path / "AGENTS.md").write_text(_AGENTS_TEMPLATE)
     (dir_path / ".gitignore").write_text(_GITIGNORE_TEMPLATE)
     (dir_path / ".env.example").write_text(_ENV_EXAMPLE_TEMPLATE)
     write_manifest(dir_path, fields)
