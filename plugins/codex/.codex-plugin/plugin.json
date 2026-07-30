@@ -23,6 +23,7 @@
     "privacyPolicyURL": "https://foro.sh/privacy",
     "termsOfServiceURL": "https://foro.sh/terms",
     "defaultPrompt": [
+      "Use foro to build an MCP server that reads my team's changelog, and put it live on foro.sh.",
       "Use foro to scaffold a new MCP server I can deploy.",
       "Use foro to get this MCP server live on foro.sh.",
       "Use foro to explain why my foro.sh deploy failed."
