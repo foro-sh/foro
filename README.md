@@ -36,6 +36,9 @@ the part that runs in *your* repo, before and during a deploy:
   guaranteed to pass foro.sh's deploy checks, then validate and run it
   locally *exactly* the way the platform will. If `foro dev` says it would
   pass the health check, it will pass deployed.
+- **`foro deploy` / `foro logs` / `foro projects`** — ship the directory you
+  just ran, watch the build, and tail the running server, without leaving the
+  terminal.
 - **`foro.run(server)`** — the one correct way to start your server: real
   streamable HTTP, bound on all interfaces, on the port foro.sh expects.
   Identical locally and deployed, so there's no "works on my machine" gap.
@@ -52,9 +55,15 @@ timeout show up instantly, locally, with a reason.
 ```bash
 uvx foro init my-server && cd my-server
 uvx foro dev
-git init && git add -A && git commit -m "init" && gh repo create --push
-# -> foro.sh dashboard: pick the repo, add secrets, Deploy
+uvx foro auth login
+uvx foro deploy
 ```
+
+`foro deploy` packages the working tree, ships it, and streams the build until
+you have a live `https://<slug>.foro.sh` URL — no repo, no push and no
+dashboard round trip required for the first deploy. A project that deploys from
+a GitHub repo instead builds from its branch; the CLI says so rather than
+quietly uploading something different.
 
 See [`packages/python/README.md`](packages/python/README.md) for the full CLI
 reference, the runtime API, and how secrets flow from the dashboard into your

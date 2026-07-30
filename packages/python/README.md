@@ -43,6 +43,11 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
 | `foro auth <login\|status\|logout\|token>` | Sign in to foro.sh, so the CLI can act on your behalf |
+| `foro deploy [path]` | Deploy this directory and stream the build until it's live |
+| `foro logs [path]` | Tail the running server (`-f`), or read a deployment's `--deploy` / `--build` log |
+| `foro projects [show]` | List your projects, or show the one this directory is linked to |
+| `foro link <slug>` / `foro unlink` | Adopt a project created in the dashboard, or forget the link |
+| `foro open` | Open the deployed URL in a browser |
 
 `foro check` mirrors the platform's own validation rule for rule, so a repo
 it passes will deploy and one it flags will not — the same reason code,
@@ -90,6 +95,58 @@ For CI, skip the browser entirely:
 ```console
 $ echo "$FORO_TOKEN" | foro auth login --with-token
 ```
+
+## Deploying
+
+```console
+$ foro deploy
+- packaged 14 files (0.1 MiB)
+- created swift-harbor-a3f2
+- deploying swift-harbor-a3f2 (a1b2c3d4)
+cloning build context
+  │ #8 exporting layers
+health check passed
+✓ live at https://swift-harbor-a3f2.foro.sh
+```
+
+`foro check` runs first, so nothing that can't build gets uploaded. The
+indented lines are raw `docker build` output, streamed alongside the deploy
+narrative because that's usually where a failure's real cause is. `Ctrl+C`
+detaches without cancelling the deploy.
+
+**What gets deployed depends on the project's source**, and the CLI won't
+guess wrong quietly:
+
+| Situation | What happens |
+| --- | --- |
+| Unlinked directory | Creates an **upload** project from the working tree, and links this directory to it |
+| Linked, `source: upload` | Uploads the working tree again, then deploys |
+| Linked, `source: github` | Builds from the repo branch — and warns about uncommitted or unpushed work, which will *not* be in that build |
+
+`--upload` / `--repo` force either path; `--detach` skips the streaming;
+`--project <slug>` acts on a project this directory isn't linked to.
+
+The archive is what git would track — `.gitignore` is honoured, and `.git/`,
+`.venv/`, `__pycache__/`, `node_modules/`, `dist/` and `.env*` are always
+excluded, so a first deploy can't ship a secret or a 400 MB virtualenv.
+`foro.yaml` must be at the root of the directory you deploy, which is where
+`foro init` puts it.
+
+The link lives in `.foro/project.json` (gitignored), **not** in `foro.yaml` —
+the manifest is the shared, committed build contract, while the slug is
+platform-generated and workspace-scoped, so baking it into a committed file
+would make a fork deploy into someone else's project.
+
+```console
+$ foro logs -f                   # tail the running server
+$ foro logs --build              # raw docker output from the last deploy
+$ foro logs --deploy --json      # the deploy narrative, one JSON object per line
+$ foro projects                  # everything in this token's workspace
+$ foro open                      # the deployed URL, in a browser
+```
+
+Runtime log retention is plan-gated (24h on Free, up to 90d on Enterprise), so
+an empty history on a quiet server is normal rather than broken.
 
 ## Runtime
 
