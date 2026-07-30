@@ -1,101 +1,130 @@
 ---
 name: deploy-to-foro
-description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL. Use when the user wants to deploy, ship, publish, or go live with a foro.yaml project on foro.sh, or when a foro.sh deploy has failed and they need help reading the logs. Assumes the repo already passes `foro check` (see the create-foro-project skill).
+description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL with `foro deploy`. Use when the user wants to deploy, ship, publish, or go live with a foro.yaml project on foro.sh, mentions `foro deploy`, or asks how to get their MCP server onto a public URL. Assumes the repo passes `foro check` (see create-foro-project). For a deploy that already failed, use debug-a-foro-deploy instead.
 ---
 
 # Deploy a project to foro.sh
 
-Get a local, `foro check`-passing project to a public `https://<slug>.foro.sh`
-URL. Deploying is a GitHub push plus a few clicks in the dashboard — be honest
-about which parts are a browser step, and don't fake a CLI deploy.
+`foro deploy` takes the directory you just ran with `foro dev` and puts it live.
+No GitHub repo, no push, no dashboard round trip for the first deploy.
 
-## Preflight
+There is exactly one step you cannot take for the user — signing in. Do that
+first, get out of their way for it, and the rest is one command.
 
-Confirm the repo is actually deployable before pushing:
-
-```bash
-uvx foro check
-```
-
-If it doesn't pass, stop and fix that first (the `create-foro-project` skill
-covers scaffolding and the constraints). A repo `foro check` flags will not
-deploy. Warnings are worth reading too — they don't block a deploy, but they
-name what will be slow or non-reproducible about it.
-
-## 1. Get the code on GitHub
-
-foro.sh deploys from a GitHub repo, so it needs to exist there first:
+## 1. Make sure there's a credential
 
 ```bash
-git init
-git add -A
-git commit -m "init"
-gh repo create --push        # creates the GitHub repo and pushes in one step
+uvx foro auth status
 ```
 
-Commit the lockfile — `uv.lock`, `pdm.lock`, `poetry.lock`, or `Pipfile.lock`,
-whichever your dependency manager writes. Without one the build still runs, but
-as a slower unlocked install with no reproducibility guarantee. A lockfile that
-is *out of sync* with `pyproject.toml` is worse than none: the build installs
-with `--frozen` and fails outright.
+Exits 0 with the account and workspace when a token is live, and exits 1 when
+there isn't one. Two ways forward:
 
-## 2. Deploy from the dashboard (this part is a browser step)
+- **`FORO_TOKEN` is already in the environment** → nothing to do; `auth status`
+  reports `$FORO_TOKEN` as the source. This is the case in CI and in a
+  pre-authorized agent sandbox, and it's the only way this path runs unattended.
+- **Not logged in** → run `uvx foro auth login`. It prints a one-time code and
+  a URL, then waits.
 
-There is **no deploy API for users yet** — deploying happens in the foro.sh
-dashboard, not the CLI. Don't pretend a command does it. Walk the user through:
+**When you run `foro auth login`, stop and hand it to the user.** It is a device
+flow: the code has to be approved in a browser by the person who owns the
+account, and no amount of retrying makes that happen from here. Show them the
+code and the URL verbatim, say you are waiting on their approval, and continue
+only once it succeeds. Do not invent a token, do not offer a workaround, and do
+not report progress you haven't seen.
 
-1. Sign in to the foro.sh dashboard with GitHub.
-2. Pick the repo you just pushed.
-3. Add any secrets the server needs in the **Secrets** tab (the same names your
-   code reads via `foro.secret("NAME")`). Secrets live here, never in the repo.
-4. Click **Deploy**.
+The token is workspace-scoped, chosen at approval time. A user with two
+workspaces logs in twice; there is no workspace-switch command.
 
-For the current connect/deploy walkthrough and screenshots, read the docs MCP:
-`foro-docs.read_doc("connect")` and `foro-docs.read_doc("secrets")` (use
-`foro-docs.list_docs()` to see all slugs).
+## 2. Deploy
 
-## 3. The result: a generated URL, not a name you choose
-
-About a minute after Deploy, the server is live at:
-
-```
-https://<slug>.foro.sh
+```bash
+uvx foro deploy
 ```
 
-The slug is **randomly generated** (`adjective-noun-4char`, e.g.
-`swift-harbor-a3f2`) and **immutable**. It is not derived from `foro.yaml`'s
-`name`. Do not promise the user a specific subdomain — read the real slug off
-the dashboard once the deploy finishes.
+That is the whole thing. It runs `foro check` first (so nothing that can't build
+gets uploaded), packages the working tree, ships it, and streams the build until
+the server is live or has failed. Indented lines in the output are raw
+`docker build` output; unindented ones are the deploy narrative.
 
-## When a deploy fails
+`Ctrl+C` detaches without cancelling the deploy — say that if it comes up,
+rather than implying the deploy died.
 
-foro.sh splits logs into two streams — check the right one:
+### What gets deployed depends on the project's source
 
-- **Build log** — raw `docker build` output. Look here for dependency/lockfile
-  problems: a stale lockfile, a package that won't install, a bad
-  `python_version`.
-- **Deploy log** — the orchestration narrative: clone, `foro.yaml` validation,
-  container start, health check, and the failure reason. Look here for a wrong
-  `entrypoint`, a server not listening on `0.0.0.0:$MCP_PORT`, or a health
-  check that timed out.
+Don't guess this out loud. The CLI tells you, and the difference matters:
 
-Usual suspects, in rough order of frequency:
+| Situation | What `foro deploy` does |
+| --- | --- |
+| Directory not linked to a project | Creates an **upload** project from the working tree, and links this directory to it |
+| Linked, `source: upload` | Uploads the working tree again, then deploys |
+| Linked, `source: github` | Builds from the repo **branch** — uncommitted and unpushed work is *not* in that build, and the CLI warns about it |
 
-1. **Stale lockfile** — the lockfile no longer matches `pyproject.toml`, so the
-   frozen install fails. Re-lock (`uv lock`, `poetry lock`, …), commit, push.
-2. **Wrong `entrypoint`** in `foro.yaml` — it must point at the file that calls
-   `foro.run(...)`.
-3. **Unset secret** — the code calls `foro.secret("NAME")` but `NAME` wasn't
-   added in the Secrets tab. Add it and redeploy.
-4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$MCP_PORT`,
-   which `foro.run()` does for you; a hand-rolled `run()` that binds
-   `127.0.0.1` or a fixed port will fail the health check.
+That last row is the one to read out loud when it happens. A user watching a
+`github`-source deploy of a tree with uncommitted changes is about to ask why
+their change isn't live; the warning is the answer, so don't scroll past it.
 
-Reproduce most of these locally with `uvx foro dev` before pushing again — it
-runs the server the same way the platform does, so a failure shows up in
-seconds instead of as a 60-second cloud health-check timeout.
+`--upload` / `--repo` force either path when the inference is wrong. `--detach`
+skips the streaming. `--project <slug>` targets a project this directory isn't
+linked to.
+
+### The link, and redeploying
+
+The first deploy writes `.foro/project.json` (`{host, slug, workspace}`), which
+is gitignored and per-clone. Redeploying is `uvx foro deploy` again — same slug,
+same URL. `foro link <slug>` adopts a project created in the dashboard, and
+`foro unlink` forgets it.
+
+This is deliberately **not** in `foro.yaml`: that file is the committed, shared
+build contract, and a slug baked into it would make anyone who forks the repo
+deploy into the original owner's project.
+
+## 3. Secrets are still a dashboard step
+
+If the server reads `foro.secret("NAME")`, that value has to be set in the
+project's Secrets tab on the dashboard before the server will start. There is no
+`foro secrets` command yet (issue #37), so this is a genuine hand-off: name the
+exact keys the code reads and tell the user where to put them.
+
+Never put a secret in `foro.yaml`, in the repo, or in a committed `.env` —
+`foro deploy` excludes `.env*` from the archive for exactly this reason.
+
+## 4. Verify the live URL before saying it works
+
+A deploy reporting `live` means the container started and passed a TCP health
+check. That is not evidence the server answers MCP with the tools it should
+have. Same rule as local: don't claim success on a banner.
+
+```bash
+curl -sS -X POST https://<slug>.foro.sh/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+A real `tools/list` naming the tools you built is the proof. If it doesn't
+answer, the deploy isn't done — go to `debug-a-foro-deploy`.
+
+## The URL is a generated slug
+
+The server lives at `https://<slug>.foro.sh`, where the slug is randomly
+generated (`adjective-noun-4char`, e.g. `swift-harbor-a3f2`) and **immutable**.
+It is not derived from `foro.yaml`'s `name`, which is display-only. Never promise
+a specific subdomain — read the real one out of the deploy output.
+
+## Looking things up
+
+`foro-docs.read_doc("connect")` and `foro-docs.read_doc("secrets")` carry the
+current walkthroughs (`foro-docs.list_docs()` for every slug). If the docs
+server isn't reachable, **say so** and continue from this skill's content —
+don't quietly fall back to half-remembered details and present them as current.
 
 ## Done when
 
-The dashboard shows the deploy succeeded and `https://<slug>.foro.sh` serves a
-real MCP response. Report the actual slug URL, not a predicted one.
+- `foro deploy` reported the deploy as live.
+- `https://<slug>.foro.sh/mcp` returned a real `tools/list` with the expected
+  tools in it.
+- The user has the actual slug URL, not a predicted one.
+
+When a deploy fails instead, that's `debug-a-foro-deploy` — which of the two log
+streams to read, and what each failure mode looks like.
