@@ -16,7 +16,16 @@ requires-python = ">=3.10"
 dependencies = [
   "typer>=0.15",
   "pyyaml>=6.0",
-  "mcp>=1.0",
+  # Upper bound is load-bearing, not caution. `foro dev`'s handshake uses
+  # mcp's streamable-HTTP client, whose context manager yields
+  # (read, write, get_session_id) through 1.x and two values in 2.0 - so an
+  # unbounded range breaks `uvx foro dev`, which resolves fresh and has no
+  # fastmcp to hold mcp down. The range matches fastmcp's own
+  # (`mcp<2.0,>=1.24.0`) on purpose: foro is a runtime dependency of every
+  # scaffolded project alongside fastmcp, and a wider or forward range there
+  # is an unresolvable conflict rather than a bug. Moving to 2.x means
+  # updating the unpack in dev.py and this bound together, once fastmcp goes.
+  "mcp>=1.24,<2.0",
   "anyio>=4.0",
   "python-dotenv>=1.0",
 ]
