@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import os
 import re
+import socket
 import subprocess
+import sys
+import webbrowser
 from importlib.metadata import version
 from pathlib import Path
 from typing import Optional
 
 import typer
 
+from foro import _config
+from foro._api import ApiError
 from foro._manifest import (
     DEFAULT_PORT,
     DEFAULT_PYTHON_VERSION,
@@ -22,6 +28,7 @@ from foro._manifest import (
 from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
 from foro._mcp import HandshakeError, handshake, normalize_url
 from foro._python_project import DEPENDENCY_MANAGERS
+from foro.auth import AuthError, fetch_identity, poll_for_token, revoke, start_device_flow
 from foro.check import run_check
 from foro.dev import DevError, run_dev
 from foro.init import (
@@ -292,3 +299,170 @@ def verify(
 
     typer.secho(f"✓ {target} is serving MCP", fg=typer.colors.GREEN)
     typer.echo("Tools: " + (", ".join(tool_names) if tool_names else "(none)"))
+
+
+auth_app = typer.Typer(no_args_is_help=True, help="Sign in to foro.sh so the CLI can act on your behalf.")
+app.add_typer(auth_app, name="auth")
+
+
+def _require_credentials() -> tuple[str, _config.Credentials]:
+    host = _config.resolve_host()
+    creds = _config.load(host)
+    if creds is None:
+        typer.secho(f"✗ not logged in to {host} - run `foro auth login`", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if _config.has_insecure_permissions() and not creds.from_env:
+        typer.secho(
+            f"warning: {_config.config_path()} is readable by other users - `chmod 600` it",
+            fg=typer.colors.YELLOW,
+        )
+    return host, creds
+
+
+@auth_app.command("login")
+def auth_login(
+    with_token: bool = typer.Option(
+        False,
+        "--with-token",
+        help="Read a token from stdin instead of running the device flow, for CI.",
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Replace an existing login without asking."),
+) -> None:
+    """Authenticate with foro.sh."""
+    host = _config.resolve_host()
+
+    if os.environ.get(_config.ENV_TOKEN):
+        typer.secho(
+            f"✗ {_config.ENV_TOKEN} is set, which overrides any stored login - unset it first",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    existing = _config.load(host)
+    if existing and not force:
+        who = f" as {existing.user}" if existing.user else ""
+        if not typer.confirm(f"Already logged in to {host}{who}. Log in again?", default=False):
+            raise typer.Exit(code=1)
+
+    if with_token:
+        token = sys.stdin.read().strip()
+        if not token:
+            typer.secho("✗ no token on stdin", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+        token_id = None
+    else:
+        token, token_id = _run_device_flow(host)
+
+    try:
+        identity = fetch_identity(host, token)
+    except ApiError as err:
+        typer.secho(f"✗ the token was rejected by {host}: {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    _config.save(
+        host,
+        _config.Credentials(
+            token=token, user=identity.user, workspace=identity.workspace, token_id=token_id
+        ),
+    )
+    workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
+    typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
+
+
+def _run_device_flow(host: str) -> tuple[str, str | None]:
+    try:
+        grant = start_device_flow(host, label=socket.gethostname())
+    except ApiError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    typer.secho(f"! First copy your one-time code: {grant.user_code}", fg=typer.colors.YELLOW)
+    typer.echo(f"Press Enter to open {host} in your browser... (or paste {grant.verification_uri_complete})")
+    try:
+        input()
+        webbrowser.open(grant.verification_uri_complete)
+
+        # ponytail: a redrawn line, not a spinner library - it has to read as
+        # progress rather than a hang, and that's all it takes. Skipped off a
+        # terminal, where \r is just noise in a log.
+        def tick(elapsed: float) -> None:
+            if sys.stdout.isatty():
+                typer.echo(f"\r- Waiting for authorization... {int(elapsed)}s", nl=False)
+
+        payload = poll_for_token(host, grant, on_wait=tick)
+    except KeyboardInterrupt:
+        typer.echo("")
+        raise typer.Exit(code=1) from None
+    except AuthError as err:
+        typer.echo("")
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    except ApiError as err:
+        typer.echo("")
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    typer.echo("")
+    return payload["access_token"], payload.get("token_id")
+
+
+@auth_app.command("status")
+def auth_status() -> None:
+    """Show who you are logged in as, and prove the token still works."""
+    host, creds = _require_credentials()
+
+    try:
+        identity = fetch_identity(host, creds.token)
+    except ApiError as err:
+        typer.secho(f"✗ the stored token is no longer valid ({err})", fg=typer.colors.RED)
+        typer.echo("  Run `foro auth login` to get a new one.")
+        raise typer.Exit(code=1) from None
+
+    where = f"${_config.ENV_TOKEN}" if creds.from_env else str(_config.config_path())
+    typer.echo(host)
+    typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
+    if identity.workspace:
+        typer.echo(f"    Workspace: {identity.workspace}")
+    typer.echo(f"    Token: {creds.token[:13]}… ({where})")
+
+
+@auth_app.command("logout")
+def auth_logout() -> None:
+    """Revoke this machine's token and forget it."""
+    host, creds = _require_credentials()
+
+    if creds.from_env:
+        typer.secho(
+            f"✗ the token comes from ${_config.ENV_TOKEN}, so there is nothing stored to log out of",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    who = f" as {creds.user}" if creds.user else ""
+    if not typer.confirm(f"Log out of {host}{who}?", default=True):
+        raise typer.Exit(code=1)
+
+    if creds.token_id:
+        try:
+            revoke(host, creds.token, creds.token_id)
+            typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
+        except ApiError as err:
+            # Deleting locally regardless is the point - an offline or
+            # already-revoked token must not strand the credential on disk.
+            typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
+            typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
+    else:
+        typer.secho(
+            "✓ Logged out locally. The token was supplied directly, so its id is unknown - "
+            "revoke it on /account if it should stop working.",
+            fg=typer.colors.GREEN,
+        )
+
+    _config.delete(host)
+
+
+@auth_app.command("token")
+def auth_token() -> None:
+    """Print the raw token, for `curl -H "Authorization: Bearer $(foro auth token)"`."""
+    _, creds = _require_credentials()
+    typer.echo(creds.token)
