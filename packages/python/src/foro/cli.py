@@ -19,6 +19,8 @@ from foro._manifest import (
     ManifestError,
     is_valid_entrypoint,
 )
+from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
+from foro._mcp import HandshakeError, handshake, normalize_url
 from foro._python_project import DEPENDENCY_MANAGERS
 from foro.check import run_check
 from foro.dev import DevError, run_dev
@@ -271,3 +273,22 @@ def dev(
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
+
+
+@app.command()
+def verify(
+    url: str = typer.Argument(..., help="Deployed server URL, e.g. https://<slug>.foro.sh"),
+    timeout: float = typer.Option(
+        DEFAULT_HANDSHAKE_TIMEOUT, "--timeout", help="Seconds to wait for a response."
+    ),
+) -> None:
+    """Prove a deployed server actually serves MCP, not just that it responds."""
+    target = normalize_url(url)
+    try:
+        tool_names = handshake(target, timeout)
+    except HandshakeError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    typer.secho(f"✓ {target} is serving MCP", fg=typer.colors.GREEN)
+    typer.echo("Tools: " + (", ".join(tool_names) if tool_names else "(none)"))
