@@ -1,3 +1,7 @@
+## <small>0.5.2 (2026-07-31)</small>
+
+* fix(plugin): point the docs MCP at the deployed server ([113ca47](https://github.com/foro-sh/foro/commit/113ca47))
+
 ## <small>0.5.1 (2026-07-31)</small>
 
 * fix(python): pin mcp below 2.0 so uvx foro dev works ([5625184](https://github.com/foro-sh/foro/commit/5625184))
