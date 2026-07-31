@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from foro._manifest import parse_and_validate
+from foro._mcp import handshake, local_url
 
 DEFAULT_TIMEOUT = 60.0
 POLL_INTERVAL = 0.5
@@ -67,22 +68,10 @@ def wait_for_port(port: int, timeout: float = DEFAULT_TIMEOUT) -> bool:
     return False
 
 
-async def _handshake(port: int) -> list[str]:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
-
-    url = f"http://127.0.0.1:{port}/mcp"
-    async with streamable_http_client(url) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            return [tool.name for tool in result.tools]
-
-
 def mcp_handshake(port: int) -> list[str]:
-    import anyio
-
-    return anyio.run(_handshake, port)
+    """The same handshake `foro verify` runs against a deployed URL - see
+    _mcp.py, which owns it so the two can't disagree about what working means."""
+    return handshake(local_url(port))
 
 
 def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[subprocess.Popen, DevResult]:
