@@ -42,10 +42,26 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
+| `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
 
 `foro check` mirrors the platform's own validation rule for rule, so a repo
 it passes will deploy and one it flags will not — the same reason code,
 surfaced locally instead of as a 60-second health-check timeout.
+
+`foro verify` applies `foro dev`'s standard to a deployed server: a URL that
+answers HTTP is not the same as one serving MCP, and a green deploy only means
+the container passed a TCP probe. It runs the same handshake `foro dev` does —
+`initialize`, then `tools/list` — and exits non-zero when that fails, so a
+script or a CI step can branch on it.
+
+```console
+$ foro verify https://swift-harbor-a3f2.foro.sh
+✓ https://swift-harbor-a3f2.foro.sh/mcp is serving MCP
+Tools: get_forecast, list_cities
+```
+
+The `/mcp` path is appended when you leave it off, so the URL `foro deploy`
+printed works as-is.
 
 ## Runtime
 
