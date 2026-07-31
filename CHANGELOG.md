@@ -1,3 +1,7 @@
+## <small>0.5.1 (2026-07-31)</small>
+
+* fix(python): pin mcp below 2.0 so uvx foro dev works ([5625184](https://github.com/foro-sh/foro/commit/5625184))
+
 ## 0.5.0 (2026-07-29)
 
 * feat(plugin): add the foro Codex plugin with docs MCP and shared skills ([cf3466f](https://github.com/foro-sh/foro/commit/cf3466f))
