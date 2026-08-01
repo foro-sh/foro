@@ -32,14 +32,24 @@ def link_path(repo_dir: Path) -> Path:
 
 def load(repo_dir: Path, host: str) -> ProjectLink | None:
     """None when this directory isn't linked, or is linked to another host -
-    the same tree can legitimately be deployed to a dev stack and to foro.sh."""
+    the same tree can legitimately be deployed to a dev stack and to foro.sh.
+
+    A file that exists but can't be read as a link counts as unlinked. It's a
+    generated cache, not something anyone typed, so a truncated or hand-edited
+    one should send `foro deploy` down its create-a-project path with a
+    re-link at the end - not abort the command with a JSONDecodeError
+    traceback the user can do nothing with.
+    """
     path = link_path(repo_dir)
     if not path.exists():
         return None
-    data = json.loads(path.read_text())
-    if data.get("host") != host:
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict) or data.get("host") != host:
+            return None
+        return ProjectLink(host=data["host"], slug=data["slug"], workspace=data.get("workspace"))
+    except (OSError, ValueError, KeyError):
         return None
-    return ProjectLink(host=data["host"], slug=data["slug"], workspace=data.get("workspace"))
 
 
 def save(repo_dir: Path, link: ProjectLink) -> None:
