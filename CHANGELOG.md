@@ -1,3 +1,8 @@
+## 0.7.0 (2026-08-01)
+
+* feat(python): add foro verify ([5947564](https://github.com/foro-sh/foro/commit/5947564))
+* refactor(python): extract the MCP handshake out of dev ([ea531e3](https://github.com/foro-sh/foro/commit/ea531e3))
+
 ## 0.6.0 (2026-08-01)
 
 * feat(python): add foro.bridge() stdio subprocess proxy ([1b58eed](https://github.com/foro-sh/foro/commit/1b58eed)), closes [#8](https://github.com/foro-sh/foro/issues/8)
