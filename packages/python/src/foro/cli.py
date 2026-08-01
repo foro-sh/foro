@@ -28,7 +28,15 @@ from foro._manifest import (
 from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
 from foro._mcp import HandshakeError, handshake, normalize_url
 from foro._python_project import DEPENDENCY_MANAGERS
-from foro.auth import AuthError, fetch_identity, poll_for_token, revoke, start_device_flow
+from foro.auth import (
+    TOKEN_PREFIX,
+    TOKEN_RE,
+    AuthError,
+    fetch_identity,
+    poll_for_token,
+    revoke,
+    start_device_flow,
+)
 from foro.check import run_check
 from foro.dev import DevError, run_dev
 from foro.init import (
@@ -348,6 +356,13 @@ def auth_login(
         token = sys.stdin.read().strip()
         if not token:
             typer.secho("✗ no token on stdin", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+        if not TOKEN_RE.match(token):
+            typer.secho(
+                f"✗ that is not a foro token - expected {TOKEN_PREFIX} "
+                "followed by 43 characters",
+                fg=typer.colors.RED,
+            )
             raise typer.Exit(code=1)
     else:
         token = _run_device_flow(host)

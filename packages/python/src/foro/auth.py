@@ -15,6 +15,7 @@ in twice and gets two tokens.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -23,6 +24,10 @@ from foro._api import ApiError
 
 # Every foro token starts with this; the random part follows it.
 TOKEN_PREFIX = "foro_pat_"
+# The format is fixed server-side: the prefix plus the base64url of 32 CSPRNG
+# bytes, unpadded. Worth checking a pasted token against before sending it
+# anywhere, so a truncated paste reads as a bad paste rather than as a 401.
+TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}[A-Za-z0-9_-]{{43}}$")
 
 # Fallback widening step, used only when a `slow_down` body arrives without an
 # `interval` of its own. The server normally sends the cadence it is enforcing.
