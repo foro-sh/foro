@@ -1,0 +1,103 @@
+name: Tests
+
+# Until this existed, nothing ran the test suites - the only PR checks were
+# commitlint and the plugin-skills diff, so a release could publish to PyPI
+# and npm with every test red and no signal anywhere.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A superseded PR run tells us nothing, so cancel it. Pushes to main are left
+# alone: those runs gate a release, and cancelling one would hide the failure
+# that should have stopped it.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    # The suite starts real servers and waits on ports, so a hang is a
+    # plausible failure mode. Fail in minutes rather than burning the
+    # six-hour default.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@d8db0a86d3d88f3017a4e6b8a1e2b234e7a0a1b5 # v4.0.0
+
+      # `foro check` rejects a repo whose uv.lock has drifted from its
+      # pyproject.toml, so this SDK should hold itself to it. --frozen also
+      # keeps the run honest: without it uv would quietly relock and the
+      # tests would pass against dependencies nobody committed.
+      - name: Install locked dependencies
+        run: uv sync --frozen --dev
+        working-directory: packages/python
+
+      # git init runs during scaffolding tests, and git refuses to work
+      # without an identity on some runner images.
+      - name: Configure git identity for scaffolding tests
+        run: |
+          git config --global user.email "ci@foro.sh"
+          git config --global user.name "foro CI"
+
+      - name: Run pytest
+        # pipefail so tee doesn't mask pytest's exit code.
+        run: |
+          set -o pipefail
+          uv run --frozen pytest -q --tb=short | tee pytest-output.txt
+        working-directory: packages/python
+
+      # Republish pytest's own summary lines as annotations, so a failure is
+      # legible from the PR (and the API) without opening the raw log.
+      - name: Annotate failures
+        if: failure()
+        run: |
+          grep -E '^(FAILED|ERROR) ' pytest-output.txt | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          {
+            echo '### Failing tests'
+            echo '```'
+            grep -E '^(FAILED|ERROR) ' pytest-output.txt || echo 'no FAILED/ERROR lines - pytest failed before collection'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        working-directory: packages/python
+
+  typescript:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: 22
+
+      - run: npm ci
+        working-directory: packages/typescript
+
+      # `test` runs the compiled output (node --test dist/**/*.test.js), so
+      # the build is a prerequisite, not just an extra check. It currently
+      # matches no files and passes trivially - that's the point of wiring it
+      # up now, so the first real .test.ts is run rather than ignored.
+      - run: npm run build
+        working-directory: packages/typescript
+
+      - run: npm test
+        working-directory: packages/typescript
