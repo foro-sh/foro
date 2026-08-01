@@ -139,8 +139,9 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
 
 def test_scaffolded_agents_md_carries_the_deploy_contract(tmp_path):
     """The point of the file is the footguns, not the prose - an agent that
-    reads it must come away knowing not to reach for mcp.run() or to drop a
-    tool in tools/ without importing it."""
+    reads it must come away knowing not to reach for mcp.run(), and knowing
+    that a tool registers only as a side effect of its module being
+    imported."""
     target = tmp_path / "scaffolded"
     scaffold_new(target, ManifestFields(name="scaffolded", entrypoint="server.py"), git_init=False)
 
@@ -148,9 +149,14 @@ def test_scaffolded_agents_md_carries_the_deploy_contract(tmp_path):
 
     assert "foro.run(mcp)" in agents
     assert "mcp.run()" in agents
-    assert "tools/__init__.py" in agents
+    assert "load_tools()" in agents
     assert 'foro.secret("NAME")' in agents
     assert "foro check" in agents and "foro dev" in agents
+
+    # The scaffold stopped keeping an import list when load_tools() started
+    # discovering modules; AGENTS.md telling an agent to maintain one would
+    # send it editing a file that no longer has one.
+    assert "imports in `tools/__init__.py`" not in agents
 
 
 def test_scaffold_new_git_init(tmp_path):

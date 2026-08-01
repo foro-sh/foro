@@ -310,10 +310,13 @@ timeout with no obvious cause.
 ## Tools
 
 - One tool per file in `tools/`, each doing `from app import mcp` and decorating
-  its function with `@mcp.tool`.
-- **Add every new tool module to the imports in `tools/__init__.py`.** A file in
-  `tools/` that isn't imported there registers nothing, and the symptom is an
-  empty tool list on a server that otherwise looks healthy.
+  its function with `@mcp.tool`. `load_tools()` discovers the file - there is no
+  import list to update.
+- **A tool registers only as a side effect of its module being imported.** Miss
+  the `@mcp.tool` decorator, or name the file with a leading underscore (which
+  `load_tools()` skips, for shared helpers), and it registers nothing - the
+  symptom is an empty tool list on a server that otherwise looks healthy.
+  `tests/test_tools.py` catches exactly this; run it.
 - Type the parameters and describe the tool - a calling model picks on the
   description, and the whole tool list is resent on every request whether it's
   called or not.
