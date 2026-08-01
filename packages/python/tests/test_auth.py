@@ -210,6 +210,19 @@ def test_token_shape_is_checked_before_a_pasted_token_is_used():
     assert not auth.TOKEN_RE.match("a" * 43)
 
 
+def test_only_loopback_hosts_are_addressed_over_plain_http():
+    from foro._api import base_url
+
+    # The two dev stacks: native on a port, and Traefik's Host() rule.
+    assert base_url("localhost:3001") == "http://localhost:3001"
+    assert base_url("127.0.0.1:3001") == "http://127.0.0.1:3001"
+    assert base_url("foro.localhost") == "http://foro.localhost"
+    # Everything else carries a bearer token and must be TLS - including a
+    # lookalike that merely contains the string.
+    assert base_url("foro.sh") == "https://foro.sh"
+    assert base_url("localhost.evil.example") == "https://localhost.evil.example"
+
+
 def test_config_round_trip_and_permissions():
     creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme")
     _config.save("foro.sh", creds)

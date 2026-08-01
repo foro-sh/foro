@@ -40,9 +40,14 @@ class ApiError(Exception):
 
 
 def base_url(host: str) -> str:
-    # A native dev stack serves plain HTTP on localhost; nothing else does.
-    scheme = "http" if host.split(":")[0] in ("localhost", "127.0.0.1") else "https"
-    return f"{scheme}://{host}"
+    # Both local dev stacks serve plain HTTP: the native one on localhost:3001,
+    # and the Docker one behind Traefik on foro.localhost, which terminates no
+    # TLS locally. RFC 6761 reserves the whole .localhost tree for the loopback,
+    # so matching the suffix can't reach anything off this machine. Nothing else
+    # is ever plaintext - a bearer token in the clear is a token gone.
+    name = host.split(":")[0]
+    local = name in ("localhost", "127.0.0.1") or name.endswith(".localhost")
+    return f"{'http' if local else 'https'}://{host}"
 
 
 def request(
