@@ -64,7 +64,9 @@ docs MCP instead of trusting anything memorised:
 
 - Call `foro-docs.read_doc("foro-yaml")` for the authoritative, current field
   reference. (Use `foro-docs.list_docs()` to see every available doc slug, and
-  `foro-docs.search_docs("...")` to find one by keyword.)
+  `foro-docs.search_docs("...")` to find one by keyword.) If the docs server
+  isn't reachable, **say so** and continue from this skill's content — don't
+  quietly present remembered fields as the current list.
 
 One field the docs page doesn't list but the platform does validate:
 `dependency_manager` (`uv`, `pdm`, `poetry`, `pipenv`, or `uv-pip`). Detection
@@ -76,7 +78,34 @@ only — it is NOT the URL.** foro.sh generates a random, immutable slug
 (`adjective-noun-4char`) and serves the server at `https://<slug>.foro.sh`.
 Don't let the user believe `name` picks their subdomain.
 
-### 3. Validate and run it locally
+### 3. Replace the example tool with the user's real ones
+
+The scaffold ships one `add(a, b)` tool so the project is runnable, not because
+anyone wants it. If the user asked for a server that does something, build that
+now — before `check` and `dev`, so what you validate is the real server.
+
+The layout is fixed and the registration step is easy to miss:
+
+```
+app.py             # creates the FastMCP instance - `mcp`
+server.py          # the entrypoint foro.yaml points at; calls foro.run(mcp)
+tools/__init__.py  # imports every tool module - a file not imported here is invisible
+tools/add.py       # one tool per file: `from app import mcp`, then @mcp.tool
+```
+
+So for each tool: add `tools/<name>.py` with `from app import mcp` and an
+`@mcp.tool`-decorated function, then **add its import to `tools/__init__.py`**.
+A tool file that isn't imported there registers nothing, and the symptom is an
+empty tool list on a server that otherwise looks healthy.
+
+Delete `tools/add.py` and its import once real tools exist — and `tests/`
+references it, so update that too rather than leaving a failing test behind.
+
+Type the parameters and give each tool a description: those are what a calling
+model picks on. The `design-mcp-tools` skill covers what makes them cheap to
+carry and easy to pick correctly — worth reading before writing more than two.
+
+### 4. Validate and run it locally
 
 ```bash
 uvx foro check    # validates the repo against foro.sh's deploy contract
@@ -87,23 +116,25 @@ uvx foro dev      # runs the server locally exactly as the platform will
 will deploy, one it flags will not — surfaced instantly instead of as a
 60-second health-check timeout in the cloud.
 
-### 4. Only claim success on a real `/mcp` response
+### 5. Only claim success on a real `/mcp` response
 
 Do not report the server as working because `foro dev` printed a banner.
 Confirm it actually serves MCP: with `foro dev` running, hit the local
 streamable-HTTP endpoint (the `/mcp` path it prints) and verify you get a real
-MCP response — an `initialize` handshake or a `tools/list` that returns the
-scaffolded tool. If it doesn't respond, it isn't done; read the `foro check` /
-`foro dev` output for the specific reason and fix that before moving on.
+MCP response — an `initialize` handshake or a `tools/list`. The tool list should
+name the tools you actually built; if it's empty, the imports in
+`tools/__init__.py` are missing. If it doesn't respond at all, it isn't done —
+read the `foro check` / `foro dev` output for the specific reason and fix that
+before moving on.
 
 ## Done when
 
+- The server exposes the tools the user asked for, not the scaffolded `add`.
 - `foro check` passes.
-- `foro dev` serves a real MCP response locally on its `/mcp` path.
+- `foro dev` serves a real MCP response locally, listing those tools.
 - The user understands: Python only (any of the five dependency managers),
   secrets live in the dashboard, and the deployed URL is a generated slug, not
   `foro.yaml`'s `name`.
 
-Next: the `deploy-to-foro` skill pushes this to GitHub and gets it live. Before
-replacing the scaffolded example with real tools, the `design-mcp-tools` skill
-covers what makes them cheap to carry and easy for a model to pick correctly.
+Next: `deploy-to-foro` gets it live with `foro deploy` — one command plus a
+one-time sign-in, no GitHub repo required.

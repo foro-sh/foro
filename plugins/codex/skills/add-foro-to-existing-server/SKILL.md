@@ -71,7 +71,9 @@ dropping `--yes`. An existing `foro.yaml` is never overwritten under `--yes` —
 init prints the diff and stops, so reconcile it by hand.
 
 Call `foro-docs.read_doc("foro-yaml")` for the current field reference rather
-than reciting fields from memory.
+than reciting fields from memory. If the docs server isn't reachable, **say so**
+and continue from this skill's content — don't present remembered fields as the
+current list.
 
 ### 4. Check, then prove it
 
@@ -111,4 +113,6 @@ raises a dashboard-actionable error when unset. A local `.env` still works for
 - `uvx foro dev` opens the port and lists the server's real tools.
 - No secret is read from a committed file.
 
-Next: the `deploy-to-foro` skill pushes to GitHub and gets it live.
+Next: `deploy-to-foro` gets it live with `foro deploy`. A repo that already has a
+GitHub remote can deploy from its branch, but it doesn't have to — `foro deploy`
+ships the working tree either way, and the skill covers which one you get.
