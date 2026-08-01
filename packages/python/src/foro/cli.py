@@ -28,8 +28,18 @@ from foro._manifest import (
     ManifestError,
     is_valid_entrypoint,
 )
+from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
+from foro._mcp import HandshakeError, handshake, normalize_url
 from foro._python_project import DEPENDENCY_MANAGERS
-from foro.auth import AuthError, fetch_identity, poll_for_token, revoke, start_device_flow
+from foro.auth import (
+    TOKEN_PREFIX,
+    TOKEN_RE,
+    AuthError,
+    fetch_identity,
+    poll_for_token,
+    revoke,
+    start_device_flow,
+)
 from foro.check import run_check
 from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
 from foro.deploy import deploy as deploy_project
@@ -288,6 +298,25 @@ def dev(
             process.kill()
 
 
+@app.command()
+def verify(
+    url: str = typer.Argument(..., help="Deployed server URL, e.g. https://<slug>.foro.sh"),
+    timeout: float = typer.Option(
+        DEFAULT_HANDSHAKE_TIMEOUT, "--timeout", help="Seconds to wait for a response."
+    ),
+) -> None:
+    """Prove a deployed server actually serves MCP, not just that it responds."""
+    target = normalize_url(url)
+    try:
+        tool_names = handshake(target, timeout)
+    except HandshakeError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    typer.secho(f"✓ {target} is serving MCP", fg=typer.colors.GREEN)
+    typer.echo("Tools: " + (", ".join(tool_names) if tool_names else "(none)"))
+
+
 auth_app = typer.Typer(no_args_is_help=True, help="Sign in to foro.sh so the CLI can act on your behalf.")
 app.add_typer(auth_app, name="auth")
 
@@ -336,9 +365,15 @@ def auth_login(
         if not token:
             typer.secho("✗ no token on stdin", fg=typer.colors.RED)
             raise typer.Exit(code=1)
-        token_id = None
+        if not TOKEN_RE.match(token):
+            typer.secho(
+                f"✗ that is not a foro token - expected {TOKEN_PREFIX} "
+                "followed by 43 characters",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
     else:
-        token, token_id = _run_device_flow(host)
+        token = _run_device_flow(host)
 
     try:
         identity = fetch_identity(host, token)
@@ -348,15 +383,13 @@ def auth_login(
 
     _config.save(
         host,
-        _config.Credentials(
-            token=token, user=identity.user, workspace=identity.workspace, token_id=token_id
-        ),
+        _config.Credentials(token=token, user=identity.user, workspace=identity.workspace),
     )
     workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
 
 
-def _run_device_flow(host: str) -> tuple[str, str | None]:
+def _run_device_flow(host: str) -> str:
     try:
         grant = start_device_flow(host, label=socket.gethostname())
     except ApiError as err:
@@ -390,7 +423,7 @@ def _run_device_flow(host: str) -> tuple[str, str | None]:
         raise typer.Exit(code=1) from None
 
     typer.echo("")
-    return payload["access_token"], payload.get("token_id")
+    return payload["access_token"]
 
 
 @auth_app.command("status")
@@ -410,7 +443,10 @@ def auth_status() -> None:
     typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
     if identity.workspace:
         typer.echo(f"    Workspace: {identity.workspace}")
-    typer.echo(f"    Token: {creds.token[:13]}… ({where})")
+    # Same 8 characters of the random part that /account renders as
+    # `token_prefix`, so you can tell which row on the dashboard is this
+    # machine's before revoking it.
+    typer.echo(f"    Token: {creds.token[: len(TOKEN_PREFIX) + 8]}… ({where})")
 
 
 @auth_app.command("logout")
@@ -429,21 +465,14 @@ def auth_logout() -> None:
     if not typer.confirm(f"Log out of {host}{who}?", default=True):
         raise typer.Exit(code=1)
 
-    if creds.token_id:
-        try:
-            revoke(host, creds.token, creds.token_id)
-            typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
-        except ApiError as err:
-            # Deleting locally regardless is the point - an offline or
-            # already-revoked token must not strand the credential on disk.
-            typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
-            typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
-    else:
-        typer.secho(
-            "✓ Logged out locally. The token was supplied directly, so its id is unknown - "
-            "revoke it on /account if it should stop working.",
-            fg=typer.colors.GREEN,
-        )
+    try:
+        revoke(host, creds.token)
+        typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
+    except (ApiError, AuthError) as err:
+        # Deleting locally regardless is the point - an offline or
+        # already-revoked token must not strand the credential on disk.
+        typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
+        typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
 
     _config.delete(host)
 
@@ -453,6 +482,8 @@ def auth_token() -> None:
     """Print the raw token, for `curl -H "Authorization: Bearer $(foro auth token)"`."""
     _, creds = _require_credentials()
     typer.echo(creds.token)
+
+
 
 
 def _fail(err: ApiError, action: str) -> typer.Exit:

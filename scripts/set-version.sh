@@ -48,4 +48,12 @@ npm --prefix "$ROOT/packages/typescript" version "$VERSION" \
 # SDK enforces on other repos, reports lockfile_out_of_sync against its own.
 uv lock --project "$ROOT/packages/python" --quiet
 
+# The minimal-fastmcp fixture depends on this package through an editable
+# path source, so its lockfile records our version too and goes stale on the
+# same bump - which is how it drifted to 0.1.0 while the package reached
+# 0.8.0. It's the only fixture that needs this: no other one has a
+# [tool.uv.sources] pointing here, and lockfile-out-of-sync is deliberately
+# stale, so relocking fixtures as a group would destroy the case it tests.
+uv lock --project "$ROOT/packages/python/tests/fixtures/minimal-fastmcp" --quiet
+
 echo "set version to $VERSION"

@@ -37,9 +37,20 @@ def test_init_output_passes_check_and_serves_via_dev(tmp_path):
         f.write(f'\n[tool.uv.sources]\nforo = {{ path = "{_PACKAGE_ROOT}", editable = true }}\n')
     subprocess.run(["uv", "lock"], cwd=target, check=True, capture_output=True)
 
+    # A tool file dropped in after scaffolding has to be served without
+    # touching any other file - that's the whole point of load_tools()
+    # discovering modules instead of tools/__init__.py listing them. The
+    # underscore-prefixed neighbour must stay unimported: it's the escape
+    # hatch for shared helpers, and importing it would raise.
+    (target / "tools" / "echo.py").write_text(
+        'from app import mcp\n\n\n@mcp.tool\ndef echo(text: str) -> str:\n    return text\n'
+    )
+    (target / "tools" / "_helpers.py").write_text('raise AssertionError("private module was imported")\n')
+
     process, dev_result = run_dev(target, timeout=30)
     try:
         assert "add" in dev_result.tool_names
+        assert "echo" in dev_result.tool_names
     finally:
         process.terminate()
         try:

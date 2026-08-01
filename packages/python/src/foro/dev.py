@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from foro._manifest import parse_and_validate
+from foro._mcp import handshake, local_url
 
 DEFAULT_TIMEOUT = 60.0
 POLL_INTERVAL = 0.5
@@ -47,7 +48,17 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
     # secrets as real env vars at deploy time, never a file. Silently a no-op
     # when .env doesn't exist (dotenv_values returns {} for a missing path).
     dotenv = {k: v for k, v in dotenv_values(repo_dir / ".env").items() if v is not None}
-    env = {**os.environ, **dotenv, "MCP_PORT": str(port)}
+    # FASTMCP_SHOW_SERVER_BANNER goes first so a shell export or a .env entry
+    # still wins - it's a default, not a policy. This is the one place the
+    # variable reliably bites: fastmcp reads it into its settings object at
+    # import time, and here it's set before the child interpreter even
+    # starts, which foro.run() (already inside that process) cannot do.
+    env = {
+        "FASTMCP_SHOW_SERVER_BANNER": "false",
+        **os.environ,
+        **dotenv,
+        "MCP_PORT": str(port),
+    }
     return subprocess.Popen(
         ["uv", "run", entrypoint],
         cwd=build_dir,
@@ -67,22 +78,10 @@ def wait_for_port(port: int, timeout: float = DEFAULT_TIMEOUT) -> bool:
     return False
 
 
-async def _handshake(port: int) -> list[str]:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
-
-    url = f"http://127.0.0.1:{port}/mcp"
-    async with streamable_http_client(url) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            return [tool.name for tool in result.tools]
-
-
 def mcp_handshake(port: int) -> list[str]:
-    import anyio
-
-    return anyio.run(_handshake, port)
+    """The same handshake `foro verify` runs against a deployed URL - see
+    _mcp.py, which owns it so the two can't disagree about what working means."""
+    return handshake(local_url(port))
 
 
 def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[subprocess.Popen, DevResult]:
