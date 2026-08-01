@@ -175,6 +175,11 @@ def test_scaffold_new_respects_custom_entrypoint(tmp_path):
     assert not (target / "server.py").exists()
     assert (target / "app.py").exists()
 
+    # The generated wiring test imports the entrypoint by module name, so a
+    # renamed entrypoint has to follow through into it - otherwise the test
+    # dies on ModuleNotFoundError for a server.py that was never written.
+    assert "importlib.import_module('run')" in (target / "tests" / "test_tools.py").read_text()
+
 
 # --- CLI: from-scratch mode ----------------------------------------------
 

@@ -42,6 +42,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
+| `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
 | `foro auth <login\|status\|logout\|token>` | Sign in to foro.sh, so the CLI can act on your behalf |
 | `foro deploy [path]` | Deploy this directory and stream the build until it's live |
 | `foro logs [path]` | Tail the running server (`-f`), or read a deployment's `--deploy` / `--build` log |
@@ -53,6 +54,63 @@ Install once with `uv tool install foro`, or run ad-hoc with
 it passes will deploy and one it flags will not — the same reason code,
 surfaced locally instead of as a 60-second health-check timeout.
 
+`foro verify` applies `foro dev`'s standard to a deployed server: a URL that
+answers HTTP is not the same as one serving MCP, and a green deploy only means
+the container passed a TCP probe. It runs the same handshake `foro dev` does —
+`initialize`, then `tools/list` — and exits non-zero when that fails, so a
+script or a CI step can branch on it.
+
+```console
+$ foro verify https://swift-harbor-a3f2.foro.sh
+✓ https://swift-harbor-a3f2.foro.sh/mcp is serving MCP
+Tools: get_forecast, list_cities
+```
+
+The `/mcp` path is appended when you leave it off, so the URL `foro deploy`
+printed works as-is.
+
+## Signing in
+
+`init`, `check` and `dev` are entirely local and need no account. `foro auth`
+is for everything that talks to foro.sh:
+
+```console
+$ foro auth login
+! First copy your one-time code: 7A2F-K9QP
+Press Enter to open foro.sh in your browser...
+- Waiting for authorization... 6s
+✓ Logged in as danielsteman (workspace: acme)
+```
+
+A browser approves the code, the CLI polls until you do — the same device flow
+`gh auth login` uses, so it works over SSH where a loopback redirect wouldn't.
+
+- **The token is workspace-scoped**, picked when you approve it. Access to a
+  second workspace means logging in again for a second token; there is no
+  workspace-switch command.
+- **`foro auth status`** validates against the API rather than reporting that a
+  file exists, so a revoked token shows as broken. It exits 1 when you aren't
+  authenticated, which is what a script should branch on.
+- **`foro auth logout`** revokes the token server-side *and* deletes it here. If
+  revocation fails it still deletes locally and tells you to finish the job on
+  `/account`.
+- **`foro auth token`** prints the raw token and nothing else, for
+  `curl -H "Authorization: Bearer $(foro auth token)"`.
+
+Credentials live in `~/.config/foro/hosts.yml` (`$XDG_CONFIG_HOME` is honoured;
+`%APPDATA%\foro` on Windows) at mode `0600`, keyed by host. Two environment
+variables override it:
+
+| Variable | Effect |
+| --- | --- |
+| `FORO_TOKEN` | Use this token instead of the stored one, and never write it to disk — the `GH_TOKEN` convention. `foro auth status` says when it's in play |
+| `FORO_HOST` | Point the CLI at another instance (`localhost:3001` for a native dev stack). Defaults to `foro.sh` |
+
+For CI, skip the browser entirely:
+
+```console
+$ echo "$FORO_TOKEN" | foro auth login --with-token
+```
 ## Signing in
 
 `init`, `check` and `dev` are entirely local and need no account. `foro auth`

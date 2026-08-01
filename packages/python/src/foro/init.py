@@ -124,6 +124,15 @@ def write_manifest(dir_path: Path, fields: ManifestFields) -> None:
 # registration side effects and calling foro.run. Two files instead of one
 # is the smallest structure that avoids `tools/add.py` needing to import
 # back from the entrypoint it's imported by.
+#
+# Registration is a side effect of importing a tool module, which makes it
+# easy to break silently - a server missing its tools starts and serves
+# perfectly well, and only looks broken from the client. Two things guard
+# that: `load_tools()` is a real call rather than a bare `import tools`, so
+# it neither reads as dead code nor trips F401 (an unused-import autofix
+# would otherwise happily delete the line that makes the server work), and
+# it discovers modules itself, so a new file in `tools/` can't be left
+# unregistered. tests/test_tools.py asserts the wiring on top of that.
 _APP_TEMPLATE = '''from fastmcp import FastMCP
 
 mcp = FastMCP("{name}")
@@ -131,17 +140,37 @@ mcp = FastMCP("{name}")
 
 _SERVER_TEMPLATE = '''import foro
 from app import mcp
+from tools import load_tools
 
-import tools  # noqa: F401 - registers every tool in tools/ against `mcp`
+load_tools()  # registers every tool in tools/ against `mcp`
 
 if __name__ == "__main__":
     foro.run(mcp)
 '''
 
-_TOOLS_INIT_TEMPLATE = '''# Import every tool module here so `import tools` registers all of them.
-# Adding a new tool: drop a file in this directory, decorate its function
-# with @mcp.tool (import `mcp` from `app`), then add the import below.
-from . import add  # noqa: F401
+_TOOLS_INIT_TEMPLATE = '''"""One file per tool. Drop a new file in this directory and decorate its
+function with @mcp.tool (importing `mcp` from `app`) - load_tools() finds
+it, so there is no import list here to keep in sync. Modules whose name
+starts with an underscore are skipped, for shared helpers that aren't
+tools themselves.
+"""
+
+import importlib
+import pkgutil
+
+
+def load_tools() -> list[str]:
+    """Import every tool module for its registration side effect: importing
+    it is what runs its @mcp.tool decorators. Returns the module names that
+    were loaded, so a caller (or a test) can tell registration actually
+    happened instead of trusting a silent import."""
+    loaded = []
+    for _, name, _ in pkgutil.iter_modules(__path__):
+        if name.startswith("_"):
+            continue
+        importlib.import_module(f"{__name__}.{name}")
+        loaded.append(name)
+    return loaded
 '''
 
 _TOOL_ADD_TEMPLATE = '''from app import mcp
@@ -152,11 +181,49 @@ def add(a: int, b: int) -> int:
     return a + b
 '''
 
-_TEST_TOOLS_TEMPLATE = '''from tools.add import add
+# __ENTRYPOINT__ is substituted with the entrypoint's module name rather
+# than .format()ed in - the body is full of braces (set comprehension, f-string).
+_TEST_TOOLS_TEMPLATE = '''import subprocess
+import sys
+from pathlib import Path
+
+from tools.add import add
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_add():
     assert add(2, 3) == 5
+
+
+def test_entrypoint_registers_every_tool():
+    """Guards the wiring rather than the logic. A tool registers as a side
+    effect of its module being imported, so an entrypoint that stops calling
+    load_tools(), or a tool file that never gets discovered, still starts up
+    perfectly well and serves nothing - a failure that stays invisible until
+    a client asks for a tool. This turns it into a test failure instead.
+
+    The probe runs in a fresh interpreter on purpose. Registration mutates
+    one shared `mcp` object, and this file's own `from tools.add import add`
+    already registers `add` in the pytest process - asserting in here would
+    pass whatever the entrypoint does. A clean process imports nothing but
+    the entrypoint, so what comes back is exactly what a deployed server
+    would serve."""
+    probe = (
+        "import asyncio, importlib;"
+        "importlib.import_module('__ENTRYPOINT__');"
+        "from app import mcp;"
+        "print(' '.join(t.name for t in asyncio.run(mcp.list_tools())))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=_PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "add" in result.stdout.split(), result.stdout
 '''
 
 _PYPROJECT_TEMPLATE = '''[project]
@@ -184,7 +251,8 @@ An MCP server, deployable on [foro.sh](https://foro.sh).
 
 - `app.py` - the FastMCP server instance, shared by every tool module
 - `tools/` - one file per tool; add a new tool by dropping a file in here
-  and importing it in `tools/__init__.py`
+  and decorating its function with `@mcp.tool`. `load_tools()` picks it up
+  automatically, so there's no import list to maintain
 - `server.py` - the deploy entrypoint (referenced by `foro.yaml` - don't rename)
 
 ## Develop
@@ -317,7 +385,9 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     (dir_path / fields.entrypoint).write_text(_SERVER_TEMPLATE)
     (tools_dir / "__init__.py").write_text(_TOOLS_INIT_TEMPLATE)
     (tools_dir / "add.py").write_text(_TOOL_ADD_TEMPLATE)
-    (tests_dir / "test_tools.py").write_text(_TEST_TOOLS_TEMPLATE)
+    (tests_dir / "test_tools.py").write_text(
+        _TEST_TOOLS_TEMPLATE.replace("__ENTRYPOINT__", Path(fields.entrypoint).stem)
+    )
     (dir_path / "pyproject.toml").write_text(
         _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version)
     )

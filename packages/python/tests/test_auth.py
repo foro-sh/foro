@@ -82,7 +82,7 @@ def test_poll_waits_through_pending_then_returns_the_token(server, no_sleeping):
     handler.script = [
         (400, {"error": "authorization_pending"}),
         (400, {"error": "authorization_pending"}),
-        (200, {"access_token": "foro_pat_abc", "token_id": "tok-1"}),
+        (200, {"access_token": "foro_pat_abc"}),
     ]
 
     payload = auth.poll_for_token(host, _grant())
@@ -91,7 +91,21 @@ def test_poll_waits_through_pending_then_returns_the_token(server, no_sleeping):
     assert len(handler.seen) == 3
 
 
-def test_slow_down_increases_the_interval(server, no_sleeping):
+def test_slow_down_adopts_the_interval_the_server_sends(server, no_sleeping):
+    host, handler = server
+    handler.script = [
+        (400, {"error": "slow_down", "interval": 12}),
+        (200, {"access_token": "foro_pat_abc"}),
+    ]
+
+    auth.poll_for_token(host, _grant(interval=5))
+
+    # 12, not 5 + SLOW_DOWN_STEP: the server is enforcing its own cadence and
+    # says which one, so a local guess is not the number to poll on.
+    assert no_sleeping == [5.0, 12.0]
+
+
+def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_sleeping):
     host, handler = server
     handler.script = [
         (400, {"error": "slow_down"}),
@@ -100,7 +114,6 @@ def test_slow_down_increases_the_interval(server, no_sleeping):
 
     auth.poll_for_token(host, _grant(interval=5))
 
-    # The signal exists to be obeyed: the second wait is longer than the first.
     assert no_sleeping == [5.0, 5.0 + auth.SLOW_DOWN_STEP]
 
 
@@ -148,19 +161,83 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
     assert identity.workspace == "acme"
 
 
+def test_revoke_deletes_the_row_matching_the_token_prefix(server):
+    host, handler = server
+    token = auth.TOKEN_PREFIX + "a1b2c3d4" + "x" * 35
+    handler.script = [
+        (200, [
+            {"id": "someone-elses", "token_prefix": "zzzzzzzz"},
+            {"id": "mine", "token_prefix": "a1b2c3d4"},
+        ]),
+        (204, {}),
+    ]
+
+    auth.revoke(host, token)
+
+    assert handler.seen[1] == ("DELETE", "/api/cli/tokens/mine")
+
+
+def test_revoke_refuses_to_guess_when_two_rows_share_a_prefix(server):
+    host, handler = server
+    token = auth.TOKEN_PREFIX + "a1b2c3d4" + "x" * 35
+    handler.script = [
+        (200, [
+            {"id": "one", "token_prefix": "a1b2c3d4"},
+            {"id": "two", "token_prefix": "a1b2c3d4"},
+        ]),
+    ]
+
+    with pytest.raises(auth.AuthError, match="more than one"):
+        auth.revoke(host, token)
+
+    # Nothing was deleted - the list call is the only request made.
+    assert len(handler.seen) == 1
+
+
+def test_revoke_says_so_when_the_token_is_already_gone(server):
+    host, handler = server
+    handler.script = [(200, [])]
+
+    with pytest.raises(auth.AuthError, match="already revoked"):
+        auth.revoke(host, auth.TOKEN_PREFIX + "a" * 43)
+
+
+def test_token_shape_is_checked_before_a_pasted_token_is_used():
+    assert auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 43)
+    # A truncated paste, the wrong credential entirely, and a bare secret.
+    assert not auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 42)
+    assert not auth.TOKEN_RE.match("ghp_" + "a" * 43)
+    assert not auth.TOKEN_RE.match("a" * 43)
+
+
+def test_only_loopback_hosts_are_addressed_over_plain_http():
+    from foro._api import base_url
+
+    # The two dev stacks: native on a port, and Traefik's Host() rule.
+    assert base_url("localhost:3001") == "http://localhost:3001"
+    assert base_url("127.0.0.1:3001") == "http://127.0.0.1:3001"
+    assert base_url("foro.localhost") == "http://foro.localhost"
+    # Everything else carries a bearer token and must be TLS - including a
+    # lookalike that merely contains the string.
+    assert base_url("foro.sh") == "https://foro.sh"
+    assert base_url("localhost.evil.example") == "https://localhost.evil.example"
+
+
 def test_config_round_trip_and_permissions():
-    creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme", token_id="tok-1")
+    creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme")
     _config.save("foro.sh", creds)
 
     loaded = _config.load("foro.sh")
     assert loaded.token == "foro_pat_abc"
-    assert loaded.token_id == "tok-1"
+    assert loaded.workspace == "acme"
     assert not loaded.from_env
     assert stat.S_IMODE(_config.config_path().stat().st_mode) == 0o600
     assert not _config.has_insecure_permissions()
 
     _config.delete("foro.sh")
     assert _config.load("foro.sh") is None
+    # Logging out of the last host leaves nothing behind, not an empty `{}`.
+    assert not _config.config_path().exists()
 
 
 def test_a_world_readable_token_file_is_flagged():

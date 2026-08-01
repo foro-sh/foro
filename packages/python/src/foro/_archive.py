@@ -95,7 +95,11 @@ def build(repo_dir: Path) -> Archive:
         )
 
     buffer = BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+    # strict_timestamps=False so a file dated before 1980 - which the zip
+    # format cannot represent, and which vendored fixtures and restored
+    # backups really do carry - is clamped rather than raising ValueError and
+    # failing the whole deploy on a timestamp nobody looks at.
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as archive:
         for rel in files:
             # as_posix(), because a zip built on Windows must still extract to
             # the same paths the Linux build container expects.

@@ -4,7 +4,7 @@ Take a repo from an empty folder to a deployed MCP server on
 [foro.sh](https://foro.sh) without leaving your agent. The plugin bundles two
 things that already exist but that agents can't reach on their own:
 
-- **The foro.sh docs MCP server** (`docs-mcp.foro.sh`, public, no auth) —
+- **The foro.sh docs MCP server** (`cosmic-canyon-7ilj.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
 - **Five skills** covering both ways in (a new project, or one that already
@@ -29,12 +29,15 @@ claude --plugin-dir ./plugins/claude-code
 
 ### `foro-docs` MCP server (`.mcp.json`)
 
-Points at the public docs MCP at `https://docs-mcp.foro.sh/mcp` (streamable
-HTTP, no auth). It exposes:
+Points at the public docs MCP at `https://cosmic-canyon-7ilj.foro.sh/mcp` (streamable HTTP,
+no auth — it's read-only documentation, so the plugin carries no credential).
+It exposes:
 
 - `list_docs()` — the available doc slugs and titles
 - `read_doc(slug)` — a doc's markdown by slug
 - `search_docs(query)` — case-insensitive search across the docs
+- `ask_faq(question)` — the docs' structured FAQ entries, ranked by keyword overlap
+- `validate_foro_yaml(manifest)` — a manifest against the platform's build-time rules
 
 Once the plugin is enabled these appear in `/context`. The skills call them so
 their guidance stays current with the docs rather than hardcoding it.

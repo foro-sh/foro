@@ -5,6 +5,7 @@ API refusal reads as a sentence."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import zipfile
@@ -240,6 +241,40 @@ def test_a_link_for_another_host_is_not_reused(tmp_path):
 
     assert _project_link.load(tmp_path, "foro.sh") is None
     assert _project_link.load(tmp_path, "localhost:3001").slug == "dev-project"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",  # a write interrupted before anything landed
+        "{not json at all",  # hand-edited into nonsense
+        '["wrong", "shape"]',  # valid JSON, not an object
+        '{"host": "foro.sh"}',  # an object, but no slug to deploy to
+    ],
+    ids=["empty", "malformed", "not-an-object", "missing-slug"],
+)
+def test_an_unreadable_link_reads_as_unlinked_rather_than_crashing(tmp_path, content):
+    # .foro/project.json is generated, not authored, so a damaged one should
+    # send deploy down its create-and-link path - not abort the command with a
+    # traceback about JSON the user never wrote.
+    _project_link.link_path(tmp_path).parent.mkdir(parents=True)
+    _project_link.link_path(tmp_path).write_text(content)
+
+    assert _project_link.load(tmp_path, "foro.sh") is None
+
+
+def test_a_pre_1980_timestamp_does_not_fail_the_deploy(tmp_path):
+    # The zip format can't represent dates before 1980 and zipfile raises on
+    # one by default. Vendored fixtures and restored backups carry them, and
+    # failing an entire deploy over an mtime nobody reads is the wrong trade.
+    _project(tmp_path)
+    ancient = tmp_path / "vendored.txt"
+    ancient.write_text("from a tarball with a 1970 mtime\n")
+    os.utime(ancient, (0, 0))
+
+    archive = _archive.build(tmp_path)
+
+    assert "vendored.txt" in _names(archive)
 
 
 def test_uncommitted_and_unpushed_work_is_called_out(tmp_path):
