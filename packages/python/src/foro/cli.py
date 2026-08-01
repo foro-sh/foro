@@ -435,7 +435,10 @@ def auth_status() -> None:
     typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
     if identity.workspace:
         typer.echo(f"    Workspace: {identity.workspace}")
-    typer.echo(f"    Token: {creds.token[:13]}… ({where})")
+    # Same 8 characters of the random part that /account renders as
+    # `token_prefix`, so you can tell which row on the dashboard is this
+    # machine's before revoking it.
+    typer.echo(f"    Token: {creds.token[: len(TOKEN_PREFIX) + 8]}… ({where})")
 
 
 @auth_app.command("logout")
