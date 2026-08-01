@@ -46,3 +46,30 @@ def test_start_server_loads_dotenv(tmp_path, monkeypatch):
     # The manifest's real port always wins over a stray MCP_PORT in .env -
     # that value is authoritative, not something local config should shadow.
     assert env["MCP_PORT"] == "8000"
+
+
+def _captured_env(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda args, **kwargs: captured.update(kwargs))
+    start_server(tmp_path, "server.py", ".", 8000)
+    return captured["env"]
+
+
+def test_start_server_suppresses_the_fastmcp_banner(tmp_path, monkeypatch):
+    # foro.run() prints foro's own banner instead. Setting it here rather
+    # than in-process is what makes it stick: fastmcp reads the variable at
+    # import time, which has already happened by the time foro.run() runs.
+    monkeypatch.delenv("FASTMCP_SHOW_SERVER_BANNER", raising=False)
+
+    assert _captured_env(tmp_path, monkeypatch)["FASTMCP_SHOW_SERVER_BANNER"] == "false"
+
+
+def test_start_server_banner_default_yields_to_an_explicit_choice(tmp_path, monkeypatch):
+    # A default, not a policy: someone debugging fastmcp itself can ask for
+    # its banner back from the shell or from .env.
+    monkeypatch.setenv("FASTMCP_SHOW_SERVER_BANNER", "true")
+    assert _captured_env(tmp_path, monkeypatch)["FASTMCP_SHOW_SERVER_BANNER"] == "true"
+
+    monkeypatch.delenv("FASTMCP_SHOW_SERVER_BANNER", raising=False)
+    (tmp_path / ".env").write_text("FASTMCP_SHOW_SERVER_BANNER=true\n")
+    assert _captured_env(tmp_path, monkeypatch)["FASTMCP_SHOW_SERVER_BANNER"] == "true"
