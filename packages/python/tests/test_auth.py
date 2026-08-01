@@ -236,6 +236,8 @@ def test_config_round_trip_and_permissions():
 
     _config.delete("foro.sh")
     assert _config.load("foro.sh") is None
+    # Logging out of the last host leaves nothing behind, not an empty `{}`.
+    assert not _config.config_path().exists()
 
 
 def test_a_world_readable_token_file_is_flagged():

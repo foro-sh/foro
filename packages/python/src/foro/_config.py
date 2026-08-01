@@ -100,5 +100,11 @@ def save(host: str, creds: Credentials) -> None:
 
 def delete(host: str) -> None:
     hosts = _read_all()
-    if hosts.pop(host, None) is not None:
+    if hosts.pop(host, None) is None:
+        return
+    if hosts:
         _write_all(hosts)
+    else:
+        # Removing the file rather than leaving `{}` behind: logging out of the
+        # last host should leave the machine as it was before the first login.
+        config_path().unlink(missing_ok=True)
