@@ -42,6 +42,7 @@
                     "CHANGELOG.md",
                     "packages/python/pyproject.toml",
                     "packages/python/uv.lock",
+                    "packages/python/tests/fixtures/minimal-fastmcp/uv.lock",
                     "packages/typescript/package.json",
                     "packages/typescript/package-lock.json"
                 ]
