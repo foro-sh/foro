@@ -26,10 +26,6 @@ class Credentials:
     token: str
     user: str | None = None
     workspace: str | None = None
-    # What `foro auth logout` revokes with. None for a token supplied via
-    # --with-token or FORO_TOKEN, where we never saw the id - logout then
-    # deletes locally and says the server-side token is still live.
-    token_id: str | None = None
     # `logout` can't delete what it didn't write and `status` has to say where
     # the token came from, or people wonder why logout changed nothing - so
     # the source travels with the credential.
@@ -89,7 +85,6 @@ def load(host: str) -> Credentials | None:
         token=entry["token"],
         user=entry.get("user"),
         workspace=entry.get("workspace"),
-        token_id=entry.get("token_id"),
     )
 
 
@@ -99,7 +94,6 @@ def save(host: str, creds: Credentials) -> None:
         "token": creds.token,
         "user": creds.user,
         "workspace": creds.workspace,
-        "token_id": creds.token_id,
     }
     _write_all(hosts)
 

@@ -82,7 +82,7 @@ def test_poll_waits_through_pending_then_returns_the_token(server, no_sleeping):
     handler.script = [
         (400, {"error": "authorization_pending"}),
         (400, {"error": "authorization_pending"}),
-        (200, {"access_token": "foro_pat_abc", "token_id": "tok-1"}),
+        (200, {"access_token": "foro_pat_abc"}),
     ]
 
     payload = auth.poll_for_token(host, _grant())
@@ -161,13 +161,54 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
     assert identity.workspace == "acme"
 
 
+def test_revoke_deletes_the_row_matching_the_token_prefix(server):
+    host, handler = server
+    token = auth.TOKEN_PREFIX + "a1b2c3d4" + "x" * 35
+    handler.script = [
+        (200, [
+            {"id": "someone-elses", "token_prefix": "zzzzzzzz"},
+            {"id": "mine", "token_prefix": "a1b2c3d4"},
+        ]),
+        (204, {}),
+    ]
+
+    auth.revoke(host, token)
+
+    assert handler.seen[1] == ("DELETE", "/api/cli/tokens/mine")
+
+
+def test_revoke_refuses_to_guess_when_two_rows_share_a_prefix(server):
+    host, handler = server
+    token = auth.TOKEN_PREFIX + "a1b2c3d4" + "x" * 35
+    handler.script = [
+        (200, [
+            {"id": "one", "token_prefix": "a1b2c3d4"},
+            {"id": "two", "token_prefix": "a1b2c3d4"},
+        ]),
+    ]
+
+    with pytest.raises(auth.AuthError, match="more than one"):
+        auth.revoke(host, token)
+
+    # Nothing was deleted - the list call is the only request made.
+    assert len(handler.seen) == 1
+
+
+def test_revoke_says_so_when_the_token_is_already_gone(server):
+    host, handler = server
+    handler.script = [(200, [])]
+
+    with pytest.raises(auth.AuthError, match="already revoked"):
+        auth.revoke(host, auth.TOKEN_PREFIX + "a" * 43)
+
+
 def test_config_round_trip_and_permissions():
-    creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme", token_id="tok-1")
+    creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme")
     _config.save("foro.sh", creds)
 
     loaded = _config.load("foro.sh")
     assert loaded.token == "foro_pat_abc"
-    assert loaded.token_id == "tok-1"
+    assert loaded.workspace == "acme"
     assert not loaded.from_env
     assert stat.S_IMODE(_config.config_path().stat().st_mode) == 0o600
     assert not _config.has_insecure_permissions()
