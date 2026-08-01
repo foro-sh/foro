@@ -91,7 +91,21 @@ def test_poll_waits_through_pending_then_returns_the_token(server, no_sleeping):
     assert len(handler.seen) == 3
 
 
-def test_slow_down_increases_the_interval(server, no_sleeping):
+def test_slow_down_adopts_the_interval_the_server_sends(server, no_sleeping):
+    host, handler = server
+    handler.script = [
+        (400, {"error": "slow_down", "interval": 12}),
+        (200, {"access_token": "foro_pat_abc"}),
+    ]
+
+    auth.poll_for_token(host, _grant(interval=5))
+
+    # 12, not 5 + SLOW_DOWN_STEP: the server is enforcing its own cadence and
+    # says which one, so a local guess is not the number to poll on.
+    assert no_sleeping == [5.0, 12.0]
+
+
+def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_sleeping):
     host, handler = server
     handler.script = [
         (400, {"error": "slow_down"}),
@@ -100,7 +114,6 @@ def test_slow_down_increases_the_interval(server, no_sleeping):
 
     auth.poll_for_token(host, _grant(interval=5))
 
-    # The signal exists to be obeyed: the second wait is longer than the first.
     assert no_sleeping == [5.0, 5.0 + auth.SLOW_DOWN_STEP]
 
 

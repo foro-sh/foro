@@ -5,8 +5,8 @@ OIDC provider's (see foro-sh/platform#551 for why): the CLI asks for a code,
 the human approves it in a browser, and the CLI polls until the grant is
 resolved. The polling loop is the part that's easy to get subtly wrong, so it
 implements the documented state machine rather than "retry until something
-works" - in particular `slow_down` means *increase the interval*, not retry at
-the old rate.
+works" - in particular `slow_down` means *poll on the interval the server sends
+back with it*, not retry at the old rate.
 
 The token is workspace-scoped, chosen at approval time, so there is no
 workspace-switch verb here: a user who wants CLI access to two workspaces logs
@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from foro import _api
 from foro._api import ApiError
 
-# RFC 8628: each `slow_down` adds this to the polling interval.
+# Fallback widening step, used only when a `slow_down` body arrives without an
+# `interval` of its own. The server normally sends the cadence it is enforcing.
 SLOW_DOWN_STEP = 5.0
 
 
@@ -89,7 +90,12 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
             if code == "authorization_pending":
                 continue
             if code == "slow_down":
-                interval += SLOW_DOWN_STEP
+                # The server widens its own stored interval and returns it, so
+                # poll on that rather than on a locally-guessed number - a
+                # guess that lands under what the server now enforces just
+                # trips `slow_down` again.
+                sent = err.payload.get("interval") if isinstance(err.payload, dict) else None
+                interval = float(sent) if sent else interval + SLOW_DOWN_STEP
                 continue
             if code == "expired_token":
                 raise AuthError(
