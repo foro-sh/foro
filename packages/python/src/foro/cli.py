@@ -349,9 +349,8 @@ def auth_login(
         if not token:
             typer.secho("✗ no token on stdin", fg=typer.colors.RED)
             raise typer.Exit(code=1)
-        token_id = None
     else:
-        token, token_id = _run_device_flow(host)
+        token = _run_device_flow(host)
 
     try:
         identity = fetch_identity(host, token)
@@ -361,15 +360,13 @@ def auth_login(
 
     _config.save(
         host,
-        _config.Credentials(
-            token=token, user=identity.user, workspace=identity.workspace, token_id=token_id
-        ),
+        _config.Credentials(token=token, user=identity.user, workspace=identity.workspace),
     )
     workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
 
 
-def _run_device_flow(host: str) -> tuple[str, str | None]:
+def _run_device_flow(host: str) -> str:
     try:
         grant = start_device_flow(host, label=socket.gethostname())
     except ApiError as err:
@@ -403,7 +400,7 @@ def _run_device_flow(host: str) -> tuple[str, str | None]:
         raise typer.Exit(code=1) from None
 
     typer.echo("")
-    return payload["access_token"], payload.get("token_id")
+    return payload["access_token"]
 
 
 @auth_app.command("status")
@@ -442,21 +439,14 @@ def auth_logout() -> None:
     if not typer.confirm(f"Log out of {host}{who}?", default=True):
         raise typer.Exit(code=1)
 
-    if creds.token_id:
-        try:
-            revoke(host, creds.token, creds.token_id)
-            typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
-        except ApiError as err:
-            # Deleting locally regardless is the point - an offline or
-            # already-revoked token must not strand the credential on disk.
-            typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
-            typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
-    else:
-        typer.secho(
-            "✓ Logged out locally. The token was supplied directly, so its id is unknown - "
-            "revoke it on /account if it should stop working.",
-            fg=typer.colors.GREEN,
-        )
+    try:
+        revoke(host, creds.token)
+        typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
+    except (ApiError, AuthError) as err:
+        # Deleting locally regardless is the point - an offline or
+        # already-revoked token must not strand the credential on disk.
+        typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
+        typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
 
     _config.delete(host)
 

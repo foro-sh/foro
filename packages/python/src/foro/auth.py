@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from foro import _api
 from foro._api import ApiError
 
+# Every foro token starts with this; the random part follows it.
+TOKEN_PREFIX = "foro_pat_"
+
 # Fallback widening step, used only when a `slow_down` body arrives without an
 # `interval` of its own. The server normally sends the cadence it is enforcing.
 SLOW_DOWN_STEP = 5.0
@@ -118,5 +121,26 @@ def fetch_identity(host: str, token: str) -> Identity:
     return Identity(user=user, workspace=workspace["name"] if workspace else None)
 
 
-def revoke(host: str, token: str, token_id: str) -> None:
-    _api.request("DELETE", f"/api/cli/tokens/{token_id}", host=host, token=token)
+def revoke(host: str, token: str) -> None:
+    """Revoke a token server-side, finding its id by prefix first.
+
+    The CLI never learns its own token's id - the poll response deliberately
+    doesn't carry one (platform#574), and a `--with-token` login never saw a
+    poll at all. So logout lists the caller's tokens and matches on
+    `token_prefix`, the first 8 characters of the random part.
+    """
+    prefix = token[len(TOKEN_PREFIX) :][:8]
+    rows = _api.request("GET", "/api/cli/tokens", host=host, token=token)
+    matches = [row for row in rows if row.get("token_prefix") == prefix]
+
+    if not matches:
+        raise AuthError("the server does not list this token - it is already revoked")
+    if len(matches) > 1:
+        # token_prefix is nominally a display field. A collision across one
+        # user's handful of tokens is unreachable at 48 bits, but deleting
+        # somebody's wrong credential is worse than deleting none.
+        raise AuthError(
+            "more than one token matches this prefix - revoke it on /account instead"
+        )
+
+    _api.request("DELETE", f"/api/cli/tokens/{matches[0]['id']}", host=host, token=token)
