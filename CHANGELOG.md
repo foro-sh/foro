@@ -1,3 +1,9 @@
+## 0.9.0 (2026-08-01)
+
+* feat(python): show foro's banner instead of FastMCP's on startup (#45) ([d36d5e0](https://github.com/foro-sh/foro/commit/d36d5e0)), closes [#45](https://github.com/foro-sh/foro/issues/45)
+* fix(python): make scaffolded tool registration hard to break silently (#44) ([96bd892](https://github.com/foro-sh/foro/commit/96bd892)), closes [#44](https://github.com/foro-sh/foro/issues/44)
+* ci: run the Python and TypeScript test suites (#47) ([9d827dc](https://github.com/foro-sh/foro/commit/9d827dc)), closes [#47](https://github.com/foro-sh/foro/issues/47)
+
 ## <small>0.8.1 (2026-08-01)</small>
 
 * fix(ci): relock the minimal-fastmcp fixture on release (#46) ([ecd297f](https://github.com/foro-sh/foro/commit/ecd297f)), closes [#46](https://github.com/foro-sh/foro/issues/46)
