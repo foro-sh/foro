@@ -202,6 +202,14 @@ def test_revoke_says_so_when_the_token_is_already_gone(server):
         auth.revoke(host, auth.TOKEN_PREFIX + "a" * 43)
 
 
+def test_token_shape_is_checked_before_a_pasted_token_is_used():
+    assert auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 43)
+    # A truncated paste, the wrong credential entirely, and a bare secret.
+    assert not auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 42)
+    assert not auth.TOKEN_RE.match("ghp_" + "a" * 43)
+    assert not auth.TOKEN_RE.match("a" * 43)
+
+
 def test_config_round_trip_and_permissions():
     creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme")
     _config.save("foro.sh", creds)
