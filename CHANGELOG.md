@@ -1,3 +1,7 @@
+## <small>0.8.1 (2026-08-01)</small>
+
+* fix(ci): relock the minimal-fastmcp fixture on release (#46) ([ecd297f](https://github.com/foro-sh/foro/commit/ecd297f)), closes [#46](https://github.com/foro-sh/foro/issues/46)
+
 ## 0.8.0 (2026-08-01)
 
 * fix(python): address the Docker dev stack over plain HTTP too ([058eb3f](https://github.com/foro-sh/foro/commit/058eb3f))
