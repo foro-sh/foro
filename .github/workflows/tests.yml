@@ -54,7 +54,26 @@ jobs:
           git config --global user.name "foro CI"
 
       - name: Run pytest
-        run: uv run --frozen pytest -v
+        # pipefail so tee doesn't mask pytest's exit code.
+        run: |
+          set -o pipefail
+          uv run --frozen pytest -q --tb=short | tee pytest-output.txt
+        working-directory: packages/python
+
+      # Republish pytest's own summary lines as annotations, so a failure is
+      # legible from the PR (and the API) without opening the raw log.
+      - name: Annotate failures
+        if: failure()
+        run: |
+          grep -E '^(FAILED|ERROR) ' pytest-output.txt | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          {
+            echo '### Failing tests'
+            echo '```'
+            grep -E '^(FAILED|ERROR) ' pytest-output.txt || echo 'no FAILED/ERROR lines - pytest failed before collection'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
         working-directory: packages/python
 
   typescript:
