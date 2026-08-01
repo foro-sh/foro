@@ -1,3 +1,15 @@
+## 0.8.0 (2026-08-01)
+
+* fix(python): address the Docker dev stack over plain HTTP too ([058eb3f](https://github.com/foro-sh/foro/commit/058eb3f))
+* fix(python): poll on the interval slow_down sends back ([c40226c](https://github.com/foro-sh/foro/commit/c40226c))
+* fix(python): remove hosts.yml when the last login goes ([6c7fd68](https://github.com/foro-sh/foro/commit/6c7fd68))
+* fix(python): revoke the real token on logout, by prefix lookup ([ca8de02](https://github.com/foro-sh/foro/commit/ca8de02)), closes [platform#574](https://github.com/platform/issues/574)
+* fix(python): show the same token prefix /account does ([b0796b4](https://github.com/foro-sh/foro/commit/b0796b4))
+* feat(python): add credential storage and a stdlib HTTP layer ([f6ef6f7](https://github.com/foro-sh/foro/commit/f6ef6f7))
+* feat(python): add foro auth login/status/logout/token ([3d77947](https://github.com/foro-sh/foro/commit/3d77947)), closes [foro-sh/foro#30](https://github.com/foro-sh/foro/issues/30) [foro-sh/platform#551](https://github.com/foro-sh/platform/issues/551)
+* feat(python): reject a malformed --with-token before sending it ([73d2ad8](https://github.com/foro-sh/foro/commit/73d2ad8))
+* docs(python): document foro auth in the package README ([be14d8c](https://github.com/foro-sh/foro/commit/be14d8c))
+
 ## 0.7.0 (2026-08-01)
 
 * feat(python): add foro verify ([5947564](https://github.com/foro-sh/foro/commit/5947564))
