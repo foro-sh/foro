@@ -48,7 +48,17 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
     # secrets as real env vars at deploy time, never a file. Silently a no-op
     # when .env doesn't exist (dotenv_values returns {} for a missing path).
     dotenv = {k: v for k, v in dotenv_values(repo_dir / ".env").items() if v is not None}
-    env = {**os.environ, **dotenv, "MCP_PORT": str(port)}
+    # FASTMCP_SHOW_SERVER_BANNER goes first so a shell export or a .env entry
+    # still wins - it's a default, not a policy. This is the one place the
+    # variable reliably bites: fastmcp reads it into its settings object at
+    # import time, and here it's set before the child interpreter even
+    # starts, which foro.run() (already inside that process) cannot do.
+    env = {
+        "FASTMCP_SHOW_SERVER_BANNER": "false",
+        **os.environ,
+        **dotenv,
+        "MCP_PORT": str(port),
+    }
     return subprocess.Popen(
         ["uv", "run", entrypoint],
         cwd=build_dir,

@@ -7,6 +7,51 @@ import sys
 
 __all__ = ["run", "secret", "bridge"]
 
+# The same art the platform's container wrapper prints
+# (platform:infra/templates/foro-wrapper.sh), duplicated rather than shared
+# because nothing links the two repos at runtime - a deployed container runs
+# the wrapper, `foro dev` runs this. Keep them in step by eye.
+_BANNER = """
+███████╗ ██████╗ ██████╗  ██████╗
+██╔════╝██╔═══██╗██╔══██╗██╔═══██╗
+█████╗  ██║   ██║██████╔╝██║   ██║
+██╔══╝  ██║   ██║██╔══██╗██║   ██║
+██║     ╚██████╔╝██║  ██║╚██████╔╝
+╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝
+"""
+
+
+def _show_foro_banner(port: int) -> None:
+    """Print foro's startup banner in place of FastMCP's own, which
+    advertises a third-party deploy target to people already deployed on
+    foro.sh.
+
+    Skipped inside a deployed container: the wrapper script prints this
+    exact art before exec'ing the server, so printing again would double it
+    in the runtime log tab. PROJECT_SLUG is the marker - the platform
+    injects it into every container it creates and nothing else sets it.
+    """
+    if os.environ.get("PROJECT_SLUG"):
+        return
+    print(_BANNER.strip("\n"))
+    print(f"foro.sh · MCP server starting on port {port}\n", flush=True)
+
+
+def _accepts_show_banner(run_method) -> bool:
+    """Whether `run_method` takes an explicit `show_banner`. Deliberately
+    does not count a **kwargs catch-all: a server that forwards unknown
+    keywords to its transport would turn a suppression attempt into a
+    TypeError from somewhere unrelated. Signature-checking rather than
+    try/except TypeError for the same reason - the server runs inside that
+    call, so a TypeError raised by a tool hours later would otherwise look
+    like a rejected argument and silently restart the server."""
+    import inspect
+
+    try:
+        return "show_banner" in inspect.signature(run_method).parameters
+    except (TypeError, ValueError):  # C-implemented or otherwise unintrospectable
+        return False
+
 
 def run(server, *, port: int | None = None) -> None:
     """Run an MCP server the way foro.sh expects: streamable HTTP, bound on
@@ -16,11 +61,22 @@ def run(server, *, port: int | None = None) -> None:
     mcp.server.fastmcp.FastMCP, or a low-level Server) - it's duck-typed, not
     checked against a specific class, so it just needs a compatible .run().
     """
-    server.run(
-        transport="http",
-        host="0.0.0.0",
-        port=port or int(os.environ.get("MCP_PORT", "8000")),
-    )
+    resolved_port = port or int(os.environ.get("MCP_PORT", "8000"))
+
+    # Only reaches a FastMCP imported after this point - fastmcp reads the
+    # variable into its settings object at import time, and by the time a
+    # server instance gets here that import has long happened. It's set
+    # anyway for the processes downstream of us that import fastmcp late:
+    # `foro.bridge` proxy backends, and anything the user's tools spawn.
+    # `show_banner` below is what actually suppresses this process's banner.
+    os.environ.setdefault("FASTMCP_SHOW_SERVER_BANNER", "false")
+
+    _show_foro_banner(resolved_port)
+
+    kwargs = {"transport": "http", "host": "0.0.0.0", "port": resolved_port}
+    if _accepts_show_banner(server.run):
+        kwargs["show_banner"] = False
+    server.run(**kwargs)
 
 
 def secret(name: str) -> str:
