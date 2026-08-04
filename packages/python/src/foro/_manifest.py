@@ -20,9 +20,11 @@ import yaml as pyyaml
 from foro._python_project import DEPENDENCY_MANAGERS
 
 NAME_RE = re.compile(r"^[a-z0-9-]{3,48}$")
-# Per path segment: letters, digits, dot, underscore, hyphen. No shell
-# metacharacters; traversal and absolute paths are rejected separately by
-# is_safe_relative_path.
+# Per path segment: letters, digits, dot, underscore, hyphen - no shell
+# metacharacters, no whitespace, no newlines. is_valid_repo_path below applies
+# this to every segment; a leading `/`, `//`, or a trailing `/` all produce an
+# empty segment, which the `+` quantifier already rejects, so those don't need
+# a separate check.
 _PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PYTHON_VERSIONS = ["3.11", "3.12", "3.13"]
 MIN_PORT = 1024
@@ -56,27 +58,33 @@ class ValidatedManifest:
     dependency_manager: str | None
 
 
-def is_safe_relative_path(p: str) -> bool:
-    if p.startswith("/") or "\0" in p or "\\" in p:
-        return False
-    return all(segment != ".." for segment in p.split("/"))
+def is_valid_repo_path(p: str) -> bool:
+    """A relative path inside the repo: no `..` traversal, absolute leading
+    `/`, NUL byte, or backslash, and every `/`-separated segment restricted to
+    _PATH_SEGMENT_RE (platform issue #605 - a bare traversal/absolute check
+    still let shell metacharacters and newlines through). Nested layouts are
+    allowed (platform issue #268, e.g. `src/server.py`). Used for every
+    path-shaped field the platform interpolates into a Dockerfile or shell
+    call: `manifest_path`, `entrypoint`, `build_path`.
 
-
-# Nested layouts are allowed (platform issue #268, e.g. `src/server.py`), but
-# every segment is still restricted to safe filename characters.
-def is_valid_entrypoint(p: str) -> bool:
-    if not is_safe_relative_path(p):
+    `fullmatch`, not `match`: without it, Python's `$` matches just before a
+    trailing newline at the end of the string (unlike JavaScript's, which is
+    strict), so `match` alone would let e.g. `"foo.py\\n"` through.
+    """
+    if "\0" in p or "\\" in p:
         return False
-    return all(segment != "" and _PATH_SEGMENT_RE.match(segment) for segment in p.split("/"))
+    return all(segment != ".." and _PATH_SEGMENT_RE.fullmatch(segment) for segment in p.split("/"))
 
 
 def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest:
     """Read, parse, and fully validate the foro.yaml at `manifest_path` (a
     repo-relative directory, "." for root) inside `build_dir`. Raises
     ManifestError with a message safe to surface to the user."""
-    if not is_safe_relative_path(manifest_path):
+    if not is_valid_repo_path(manifest_path):
         raise ManifestError(
-            "manifest_path must be a relative path within the repo", "invalid_build_path"
+            "manifest_path must be a relative path within the repo "
+            "(no `..` traversal or shell metacharacters)",
+            "invalid_build_path",
         )
 
     try:
@@ -112,7 +120,7 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
 
     # entrypoint - required. Relative subpaths are allowed (e.g. src/server.py).
     entrypoint = doc.get("entrypoint")
-    if not isinstance(entrypoint, str) or not is_valid_entrypoint(entrypoint):
+    if not isinstance(entrypoint, str) or not is_valid_repo_path(entrypoint):
         raise ManifestError(
             "foro.yaml `entrypoint` must be a relative path within the repo "
             "(no `..` traversal or shell metacharacters)",
@@ -125,9 +133,10 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
     build_path = manifest_path
     if "build_path" in doc:
         raw_build_path = doc["build_path"]
-        if not isinstance(raw_build_path, str) or not is_safe_relative_path(raw_build_path):
+        if not isinstance(raw_build_path, str) or not is_valid_repo_path(raw_build_path):
             raise ManifestError(
-                "foro.yaml `build_path` must be a relative path within the repo (no `..` traversal)",
+                "foro.yaml `build_path` must be a relative path within the repo "
+                "(no `..` traversal or shell metacharacters)",
                 "invalid_build_path",
             )
         build_path = posixpath.normpath(posixpath.join(manifest_path, raw_build_path))

@@ -60,6 +60,21 @@
     "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
+    "name": "bad-build-path-shell-metachar",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \". && whoami\"\n",
+    "expect": { "ok": false, "reason": "invalid_build_path" }
+  },
+  {
+    "name": "bad-build-path-space",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \"my services\"\n",
+    "expect": { "ok": false, "reason": "invalid_build_path" }
+  },
+  {
+    "name": "bad-build-path-newline",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \"app\\nUSER root\"\n",
+    "expect": { "ok": false, "reason": "invalid_build_path" }
+  },
+  {
     "name": "bad-python-version",
     "yaml": "name: my-server\nentrypoint: server.py\npython_version: \"3.9\"\n",
     "expect": { "ok": false, "reason": "invalid_python_version" }
