@@ -1,3 +1,8 @@
+## <small>0.9.1 (2026-08-04)</small>
+
+* test(python): cover manifest_path and is_valid_repo_path directly ([eacca34](https://github.com/foro-sh/foro/commit/eacca34))
+* fix(python): close build_path/manifest_path validation gap ([52609ae](https://github.com/foro-sh/foro/commit/52609ae))
+
 ## 0.9.0 (2026-08-01)
 
 * feat(python): show foro's banner instead of FastMCP's on startup (#45) ([d36d5e0](https://github.com/foro-sh/foro/commit/d36d5e0)), closes [#45](https://github.com/foro-sh/foro/issues/45)
