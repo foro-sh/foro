@@ -23,7 +23,7 @@ from foro._manifest import (
     PYTHON_VERSIONS,
     SIDECAR_PORT,
     ManifestError,
-    is_valid_entrypoint,
+    is_valid_repo_path,
 )
 from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
 from foro._mcp import HandshakeError, handshake, normalize_url
@@ -130,7 +130,7 @@ def _prompt_name(default: str) -> str:
 def _prompt_entrypoint(default: str) -> str:
     while True:
         value = _prompt("Entrypoint", default=default)
-        if value.endswith(".py") and is_valid_entrypoint(value):
+        if value.endswith(".py") and is_valid_repo_path(value):
             return value
         typer.secho(
             "Entrypoint must be a relative .py path within the project "
