@@ -119,6 +119,16 @@ jobs:
             fi
           done
 
+      # The root install only covers the root package (commitlint,
+      # semantic-release and its plugins) - packages/typescript is a separate
+      # npm project with its own package-lock.json, so its own dependencies
+      # (e.g. @types/node, needed once src/manifest-cases.test.ts started
+      # referencing node:test/node:assert) have to be installed explicitly
+      # before the root build script shells into it.
+      - name: Install typescript package dependencies
+        run: npm ci
+        working-directory: packages/typescript
+
       - name: Build
         run: npm run build
 
