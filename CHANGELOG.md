@@ -1,3 +1,9 @@
+## <small>0.9.2 (2026-08-04)</small>
+
+* fix(ci): install packages/typescript deps before the release build ([d1151ff](https://github.com/foro-sh/foro/commit/d1151ff)), closes [foro-sh/foro#49](https://github.com/foro-sh/foro/issues/49)
+* fix(typescript): add the @types/node dev dependency node:test needs ([5b980a6](https://github.com/foro-sh/foro/commit/5b980a6))
+* test(typescript): wire up the first real manifest-cases test ([d637a3d](https://github.com/foro-sh/foro/commit/d637a3d))
+
 ## <small>0.9.1 (2026-08-04)</small>
 
 * test(python): cover manifest_path and is_valid_repo_path directly ([eacca34](https://github.com/foro-sh/foro/commit/eacca34))
