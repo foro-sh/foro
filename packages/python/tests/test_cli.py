@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from foro import _config
 from foro._manifest import DEFAULT_PORT, DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS
 from foro.cli import app
+from foro.dev import DevResult
 
 runner = CliRunner()
 
@@ -36,6 +37,37 @@ def test_check_fails_invalid_project(tmp_path):
 
     assert result.exit_code == 1
     assert "invalid_entrypoint" in result.stdout
+
+
+def test_dev_once_stops_the_server_instead_of_waiting(monkeypatch):
+    """`--once` is what makes `dev` runnable by an agent at all: the default
+    form blocks on `process.wait()` until Ctrl+C, which an agent can only
+    escape by timing out. The fake refuses an unbounded `wait()`, so this
+    fails if `--once` ever falls through to the blocking path - a plain
+    exit-code assertion wouldn't, since a fake process returns instantly."""
+
+    class FakeProcess:
+        terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            assert timeout is not None, "--once must not block on process.wait()"
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        "foro.cli.run_dev",
+        lambda path: (process, DevResult(port=DEFAULT_PORT, tool_names=["add"])),
+    )
+
+    result = runner.invoke(app, ["dev", "--once"])
+
+    assert result.exit_code == 0, result.exception or result.stdout
+    assert "would pass" in result.stdout
+    assert "add" in result.stdout
+    assert process.terminated
 
 
 def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
