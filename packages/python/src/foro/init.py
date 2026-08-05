@@ -22,6 +22,7 @@ testable without a terminal attached.
 from __future__ import annotations
 
 import difflib
+import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -210,6 +211,49 @@ uv run pytest
 Push this repo to GitHub, then connect it from the foro.sh dashboard.
 '''
 
+# A bridge project has no tools of its own - the entrypoint is the whole
+# server. `command` is written as a repr'd list rather than a shell string:
+# foro.bridge takes argv, and a repr survives paths with spaces without the
+# generated file needing to quote anything.
+_BRIDGE_SERVER_TEMPLATE = '''import foro
+
+if __name__ == "__main__":
+    # Stdio is single-client by nature, so each HTTP session gets its own
+    # backend process. `shared=True` reuses one process for every session
+    # instead - only correct for a backend with no per-client state.
+    foro.bridge({command}{shared})
+'''
+
+_BRIDGE_README_TEMPLATE = '''# {name}
+
+An MCP server, deployable on [foro.sh](https://foro.sh).
+
+This project implements no tools of its own. It proxies an existing stdio MCP
+server over the streamable HTTP transport foro.sh requires:
+
+```
+{command_display}
+```
+
+That backend runs as a subprocess inside the deployed container, so whatever
+launches it - `uvx`, an interpreter, a binary - has to exist there too.
+
+## Develop
+
+```bash
+uv tool install foro   # once
+foro dev --once        # proves the proxy actually serves the backend's tools
+```
+
+Copy `.env.example` to `.env` for anything the backend needs to read - the
+backend inherits this process's environment. In production those are set as
+Secrets in the foro.sh dashboard instead.
+
+## Deploy
+
+Push this repo to GitHub, then connect it from the foro.sh dashboard.
+'''
+
 _GITIGNORE_TEMPLATE = '''.venv/
 __pycache__/
 *.pyc
@@ -231,9 +275,10 @@ constraints below are what the platform enforces at deploy time - each one is
 caught by `foro check` or `foro dev`, so prove them with those rather than by
 reading code.
 
-- **The entrypoint calls `foro.run(mcp)`** - never a bare `mcp.run()`, which
-  defaults to stdio transport, never opens a port, and fails the deploy health
-  check 60 seconds in.
+- **The entrypoint calls `foro.run(mcp)`** - or `foro.bridge([...])` if this
+  project proxies another server - never a bare `mcp.run()`, which defaults to
+  stdio transport, never opens a port, and fails the deploy health check 60
+  seconds in.
 - **Secrets are read with `foro.secret("NAME")`** - never a literal in the
   source, never a value in `foro.yaml`. They are set in the foro.sh dashboard
   and arrive as environment variables.
@@ -291,13 +336,45 @@ _ENV_EXAMPLE_TEMPLATE = '''# Copy to .env for local development - foro dev loads
 '''
 
 
-def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False) -> None:
-    """Write a from-scratch project: app.py, server.py (the entrypoint -
-    foro.yaml always points here), tools/, pyproject.toml, foro.yaml, a
-    locked uv.lock (`uv lock`, so the golden round-trip - init's output
-    must pass check - holds without a manual step), README.md, .gitignore,
-    .env.example, AGENTS.md + CLAUDE.md, and tests/."""
+def scaffold_new(
+    dir_path: Path,
+    fields: ManifestFields,
+    git_init: bool = False,
+    bridge: list[str] | None = None,
+    shared: bool = False,
+) -> None:
+    """Write a from-scratch project: the entrypoint (foro.yaml always points
+    at it), pyproject.toml, foro.yaml, a locked uv.lock (`uv lock`, so the
+    golden round-trip - init's output must pass check - holds without a
+    manual step), README.md, .gitignore, .env.example, AGENTS.md + CLAUDE.md.
+
+    `bridge` is argv for an existing stdio MCP server. Given one, the project
+    proxies that server instead of implementing tools of its own, so app.py,
+    tools/ and tests/ aren't written - the entrypoint is the whole server.
+    Everything past the entrypoint is identical either way, which is why both
+    shapes share this function rather than forking into two scaffolders.
+    """
     dir_path.mkdir(parents=True, exist_ok=True)
+
+    if bridge:
+        _write_bridge_entrypoint(dir_path, fields, bridge, shared)
+    else:
+        _write_tool_project(dir_path, fields)
+
+    (dir_path / "pyproject.toml").write_text(
+        _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version)
+    )
+    (dir_path / ".gitignore").write_text(_GITIGNORE_TEMPLATE)
+    (dir_path / ".env.example").write_text(_ENV_EXAMPLE_TEMPLATE)
+    write_agent_instructions(dir_path)
+    write_manifest(dir_path, fields)
+
+    subprocess.run(["uv", "lock"], cwd=dir_path, check=True, capture_output=True)
+    if git_init:
+        init_git_repo(dir_path)
+
+
+def _write_tool_project(dir_path: Path, fields: ManifestFields) -> None:
     tools_dir = dir_path / "tools"
     tests_dir = dir_path / "tests"
     tools_dir.mkdir(parents=True, exist_ok=True)
@@ -308,18 +385,20 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     (tools_dir / "__init__.py").write_text(_TOOLS_INIT_TEMPLATE)
     (tools_dir / "add.py").write_text(_TOOL_ADD_TEMPLATE)
     (tests_dir / "test_tools.py").write_text(_TEST_TOOLS_TEMPLATE)
-    (dir_path / "pyproject.toml").write_text(
-        _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version)
-    )
     (dir_path / "README.md").write_text(_README_TEMPLATE.format(name=fields.name))
-    (dir_path / ".gitignore").write_text(_GITIGNORE_TEMPLATE)
-    (dir_path / ".env.example").write_text(_ENV_EXAMPLE_TEMPLATE)
-    write_agent_instructions(dir_path)
-    write_manifest(dir_path, fields)
 
-    subprocess.run(["uv", "lock"], cwd=dir_path, check=True, capture_output=True)
-    if git_init:
-        init_git_repo(dir_path)
+
+def _write_bridge_entrypoint(
+    dir_path: Path, fields: ManifestFields, command: list[str], shared: bool
+) -> None:
+    (dir_path / fields.entrypoint).write_text(
+        _BRIDGE_SERVER_TEMPLATE.format(
+            command=repr(command), shared=", shared=True" if shared else ""
+        )
+    )
+    (dir_path / "README.md").write_text(
+        _BRIDGE_README_TEMPLATE.format(name=fields.name, command_display=shlex.join(command))
+    )
 
 
 def init_git_repo(dir_path: Path) -> None:

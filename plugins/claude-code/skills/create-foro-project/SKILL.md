@@ -21,9 +21,10 @@ anything:
    which from the lockfile or `pyproject.toml` in the build directory. `uv` is
    the default and what `foro init` scaffolds, so prefer it for a new project,
    but never tell someone their existing Poetry or `requirements.txt` project
-   can't ship. If the user wants a TypeScript/Node server, that is the real
-   limit: say it isn't deployable on foro.sh yet rather than scaffolding
-   something that can't ship.
+   can't ship. Writing a *new* TypeScript/Node server is the real limit: say
+   it isn't deployable on foro.sh yet rather than scaffolding something that
+   can't ship. An MCP server that **already exists** is a different case — see
+   below.
 2. **Secrets go in the dashboard, never in the repo.** API keys and tokens are
    added in the project's Secrets tab on the foro.sh dashboard and arrive as
    environment variables at deploy time. Never commit a secret, never put one
@@ -55,6 +56,21 @@ only when the user is running the command themselves and wants to answer.
 If the user already has a working MCP server rather than an empty folder, this
 is the wrong skill: use `add-foro-to-existing-server`, which handles the
 transport conversion that porting actually turns on.
+
+### Wrapping a server that already exists, instead of writing one
+
+When the goal is to give an *existing* stdio MCP server a public URL — a
+published one, or something not written in Python — nothing needs rewriting:
+
+```bash
+uvx foro init <name> --bridge "uvx some-stdio-mcp" --yes
+```
+
+That scaffolds a project whose entrypoint runs the backend as a subprocess and
+proxies it over the transport foro.sh requires. The backend is launched inside
+the deployed container, so a `uvx`-launchable backend is the safe case; one
+that needs another runtime present is not something to promise without
+checking. Everything after this point — `check`, `dev`, deploy — is identical.
 
 ### 2. Explain `foro.yaml` (look up the current fields, don't hardcode them)
 

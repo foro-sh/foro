@@ -7,6 +7,7 @@ from foro.check import run_check
 from foro.cli import app
 from foro.init import (
     ManifestFields,
+    _write_bridge_entrypoint,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
     existing_manifest_diff,
@@ -160,6 +161,44 @@ def test_scaffold_new_respects_custom_entrypoint(tmp_path):
     assert (target / "run.py").exists()
     assert not (target / "server.py").exists()
     assert (target / "app.py").exists()
+
+
+def test_scaffold_new_bridge_proxies_instead_of_implementing_tools(tmp_path):
+    target = tmp_path / "bridged"
+    fields = ManifestFields(name="bridged", entrypoint="server.py")
+
+    scaffold_new(target, fields, git_init=False, bridge=["uvx", "some-stdio-mcp"])
+
+    assert "foro.bridge(['uvx', 'some-stdio-mcp'])" in (target / "server.py").read_text()
+    assert not (target / "tools").exists()
+    assert not (target / "app.py").exists()
+    # The trap this scaffold has to avoid: bridge() imports fastmcp lazily and
+    # the foro package itself keeps fastmcp out of its runtime deps, so a
+    # bridge project that doesn't declare it builds fine and dies at boot.
+    assert '"fastmcp"' in (target / "pyproject.toml").read_text()
+
+    result = run_check(target)
+    assert result.ok, result.message
+
+
+def test_bridge_entrypoint_shared_opts_out_of_per_session_isolation(tmp_path):
+    fields = ManifestFields(name="bridged", entrypoint="server.py")
+
+    _write_bridge_entrypoint(tmp_path, fields, ["uvx", "some-stdio-mcp"], shared=True)
+
+    assert "foro.bridge(['uvx', 'some-stdio-mcp'], shared=True)" in (tmp_path / "server.py").read_text()
+
+
+def test_cli_init_rejects_bridge_flags_that_would_do_nothing(tmp_path):
+    """Both of these are silent no-ops if they're let through - a flag that
+    quietly does nothing is worse than one that refuses."""
+    no_directory = runner.invoke(app, ["init", "--bridge", "uvx some-stdio-mcp"])
+    assert no_directory.exit_code == 1
+    assert "needs a directory name" in no_directory.stdout
+
+    shared_alone = runner.invoke(app, ["init", str(tmp_path / "x"), "--yes", "--shared"])
+    assert shared_alone.exit_code == 1
+    assert "only means something with --bridge" in shared_alone.stdout
 
 
 # --- write_agent_instructions ---------------------------------------------

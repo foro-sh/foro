@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from importlib.metadata import version
 from pathlib import Path
 from typing import Optional
@@ -168,18 +169,62 @@ def init(
         "unattended (in CI, or when an agent drives it). An existing "
         "foro.yaml is still never overwritten.",
     ),
+    bridge: Optional[str] = typer.Option(
+        None,
+        "--bridge",
+        help="Scaffold a proxy for an MCP server that already exists, instead "
+        'of a server of your own: --bridge "uvx some-stdio-mcp". The command '
+        "runs as a subprocess in the deployed container.",
+    ),
+    shared: bool = typer.Option(
+        False,
+        "--shared",
+        help="With --bridge: reuse one backend process across every session "
+        "instead of starting one per session. Only correct for a backend "
+        "with no per-client state.",
+    ),
 ) -> None:
     """Scaffold a new MCP server, or add foro.yaml to an existing one."""
     global _assume_yes
     _assume_yes = yes
 
+    command = _bridge_argv(bridge, name, shared)
+
     if name is not None:
-        _init_from_scratch(Path(name))
+        _init_from_scratch(Path(name), command, shared)
     else:
         _init_existing(Path("."))
 
 
-def _init_from_scratch(target: Path) -> None:
+def _bridge_argv(bridge: str | None, name: str | None, shared: bool) -> list[str] | None:
+    """Validate the bridge flags and split the command into argv.
+
+    Both failures here are silent no-ops otherwise - `--bridge` without a
+    directory would scaffold nothing and `--shared` without `--bridge` would
+    be ignored - and a flag that quietly does nothing is worse than one that
+    refuses."""
+    if bridge is None:
+        if shared:
+            typer.secho("✗ --shared only means something with --bridge", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+        return None
+
+    if name is None:
+        typer.secho(
+            "✗ --bridge scaffolds a new project, so it needs a directory name: "
+            'foro init <name> --bridge "..."',
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    command = shlex.split(bridge)
+    if not command:
+        typer.secho("✗ --bridge needs a command to run", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    return command
+
+
+def _init_from_scratch(target: Path, bridge: list[str] | None = None, shared: bool = False) -> None:
     if target.exists() and any(target.iterdir()):
         typer.secho(
             f"✗ {target} already exists and is not empty - run `foro init` with no "
@@ -197,7 +242,7 @@ def _init_from_scratch(target: Path) -> None:
     # filename choice like existing-repo mode's entrypoint. See
     # scaffold_new's docstring.
     fields = ManifestFields(name=name, entrypoint="server.py", python_version=python_version, port=port)
-    scaffold_new(target, fields, git_init=git_init)
+    scaffold_new(target, fields, git_init=git_init, bridge=bridge, shared=shared)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
     typer.echo(f"  cd {target} && foro dev")

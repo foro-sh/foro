@@ -81,7 +81,11 @@ intercept tool calls or run in the background.
 
 Deliberately absent: a `debug-foro-deploy` skill. There's no user-facing logs
 API, so it could only say which dashboard tab to open, which `deploy-to-foro`
-already does. Worth writing once we know the top three real failures. Also no
-TypeScript-project skill until the SDK's `foro.bridge()` lands and makes
-non-Python servers deployable — at which point `create-foro-project`'s "Node
-doesn't ship" line needs revisiting too.
+already does. Worth writing once we know the top three real failures.
+
+`foro.bridge()` has since landed, and `create-foro-project` now covers it: an
+MCP server that already exists can be wrapped with `foro init --bridge` and
+deployed without writing a server at all. Still no TypeScript-*project* skill,
+and that's a different question — bridging runs the backend as a subprocess in
+the container, so it turns on what that image can launch, not on what the
+platform can build.

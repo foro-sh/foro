@@ -39,7 +39,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 
 | Command | What it does |
 | --- | --- |
-| `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
+| `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents. `--bridge "<command>"` scaffolds a proxy for an MCP server that already exists instead of one of your own |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check. `--once` verifies and exits instead of staying up, for CI and coding agents |
 | `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
@@ -85,6 +85,14 @@ if __name__ == "__main__":
 | --- | --- |
 | `foro.run(server, *, port=None)` | The one correct way to start a server for foro.sh. Accepts any FastMCP-shaped server (standalone `fastmcp.FastMCP`, `mcp.server.fastmcp.FastMCP`, or a low-level `Server`) — it's duck-typed, not tied to a specific class. |
 | `foro.secret(name)` | Read a required secret from the environment, raising a dashboard-actionable error if it's missing. Set secrets in your project's Secrets tab on the dashboard; they arrive as env vars at deploy time. |
+| `foro.bridge(command, *, shared=False)` | Serve an MCP server you can't just import — third-party, or not written in Python — over the transport foro.sh requires, by running it as a stdio subprocess and proxying it. `command` is argv, e.g. `["uvx", "some-stdio-mcp"]`. Each HTTP session gets its own backend process unless `shared=True`. `foro init <name> --bridge "..."` scaffolds this for you. |
+
+`foro.bridge()` starts the backend and completes an MCP `initialize` against
+it before serving, and refuses to start if that fails — foro.sh's health probe
+only checks that the port opened, so a backend that dies on a bad import would
+otherwise report healthy while every tool call failed. Whatever launches the
+backend (`uvx`, an interpreter, a binary) has to exist inside the deployed
+container.
 
 Bare `foro` (what a deployed container installs — no `[cli]` extra) stays
 dependency-free, so a deployed container never pulls in CLI tooling it
