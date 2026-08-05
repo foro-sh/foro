@@ -11,8 +11,9 @@ serves - see tests/test_init_dev_roundtrip.py).
 Existing-repo mode (no `name`, run inside a project that already has code):
 detect instead of prompting blind, reusing the platform's own detection
 signal (`_python_project.detect_dependency_manager`) so the pre-filled
-answer matches what the platform would infer at deploy time. Only
-`foro.yaml` is written - never touches source files.
+answer matches what the platform would infer at deploy time. Writes only
+`foro.yaml` and the agent-instruction files, the latter only when absent -
+no source file is touched and no existing file of any kind is modified.
 
 All interactive prompting lives in cli.py; this module is pure logic so it's
 testable without a terminal attached.
@@ -217,6 +218,71 @@ __pycache__/
 .DS_Store
 '''
 
+# Invariants, not a manual - four rules and how to prove them, because a long
+# instructions file is one an agent skims. Each line states something `check`
+# or `dev` already enforces and then defers to them as the authority, so this
+# file can't rot into contradicting the CLI shipped alongside it. Deliberately
+# NOT a copy of the plugin's skills: those look their facts up live through the
+# docs MCP, and a copy sitting in a user's repo is a fossil nothing can patch.
+_AGENTS_TEMPLATE = '''# Agent instructions
+
+This repo is an MCP server deployed on [foro.sh](https://foro.sh). The
+constraints below are what the platform enforces at deploy time - each one is
+caught by `foro check` or `foro dev`, so prove them with those rather than by
+reading code.
+
+- **The entrypoint calls `foro.run(mcp)`** - never a bare `mcp.run()`, which
+  defaults to stdio transport, never opens a port, and fails the deploy health
+  check 60 seconds in.
+- **Secrets are read with `foro.secret("NAME")`** - never a literal in the
+  source, never a value in `foro.yaml`. They are set in the foro.sh dashboard
+  and arrive as environment variables.
+- **Re-lock after any dependency change** (`uv lock`, `poetry lock`, ...) and
+  commit the lockfile. One that is out of sync with `pyproject.toml` fails the
+  build outright.
+- **`name:` in `foro.yaml` is a display name, not the URL.** The deployed URL
+  is a generated slug - read it off the dashboard, never predict it.
+
+## Before reporting that anything works
+
+```bash
+uvx foro check       # would this deploy?
+uvx foro dev --once  # does it actually serve MCP? prints the tool list
+```
+
+Both exit non-zero on failure. A startup banner is not evidence - the tool
+list is.
+'''
+
+# ponytail: a pointer, not a second copy of the invariants - Claude Code reads
+# CLAUDE.md, and `@path` inlines the real file. Reads as a plain instruction
+# even where that syntax isn't supported.
+_CLAUDE_TEMPLATE = '''See @AGENTS.md for this project's constraints.
+'''
+
+# AGENTS.md covers Codex and Cursor; CLAUDE.md points at it for Claude Code.
+AGENT_FILES = ("AGENTS.md", "CLAUDE.md")
+
+
+def write_agent_instructions(dir_path: Path) -> list[str]:
+    """Write the agent-instruction files, skipping any that already exists,
+    and return the names actually written.
+
+    Never overwrites: an existing AGENTS.md is someone's own, usually longer
+    and more specific than ours, and silently replacing it would be the worst
+    possible first impression. Skipping is also what keeps this idempotent -
+    `foro init` is safe to re-run, and re-running never appends a second copy.
+    """
+    written = []
+    for filename, template in zip(AGENT_FILES, (_AGENTS_TEMPLATE, _CLAUDE_TEMPLATE)):
+        path = dir_path / filename
+        if path.exists():
+            continue
+        path.write_text(template)
+        written.append(filename)
+    return written
+
+
 _ENV_EXAMPLE_TEMPLATE = '''# Copy to .env for local development - foro dev loads it automatically.
 # Never commit the real .env; in production these are set as Secrets in
 # the foro.sh dashboard instead, and read the same way via foro.secret().
@@ -230,7 +296,7 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     foro.yaml always points here), tools/, pyproject.toml, foro.yaml, a
     locked uv.lock (`uv lock`, so the golden round-trip - init's output
     must pass check - holds without a manual step), README.md, .gitignore,
-    .env.example, and tests/."""
+    .env.example, AGENTS.md + CLAUDE.md, and tests/."""
     dir_path.mkdir(parents=True, exist_ok=True)
     tools_dir = dir_path / "tools"
     tests_dir = dir_path / "tests"
@@ -248,6 +314,7 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     (dir_path / "README.md").write_text(_README_TEMPLATE.format(name=fields.name))
     (dir_path / ".gitignore").write_text(_GITIGNORE_TEMPLATE)
     (dir_path / ".env.example").write_text(_ENV_EXAMPLE_TEMPLATE)
+    write_agent_instructions(dir_path)
     write_manifest(dir_path, fields)
 
     subprocess.run(["uv", "lock"], cwd=dir_path, check=True, capture_output=True)

@@ -12,6 +12,7 @@ from foro.init import (
     existing_manifest_diff,
     manifest_yaml,
     scaffold_new,
+    write_agent_instructions,
     write_manifest,
 )
 
@@ -127,6 +128,8 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "README.md").exists()
     assert (target / ".gitignore").exists()
     assert (target / ".env.example").exists()
+    assert (target / "AGENTS.md").exists()
+    assert (target / "CLAUDE.md").exists()
     assert not (target / ".git").exists()
 
     manifest = parse_and_validate(target, ".")
@@ -157,6 +160,22 @@ def test_scaffold_new_respects_custom_entrypoint(tmp_path):
     assert (target / "run.py").exists()
     assert not (target / "server.py").exists()
     assert (target / "app.py").exists()
+
+
+# --- write_agent_instructions ---------------------------------------------
+
+
+def test_write_agent_instructions_never_overwrites(tmp_path):
+    """An existing AGENTS.md is the user's own, usually longer and more
+    specific than ours - replacing it silently would be the worst possible
+    first impression. Skipping is also what makes `foro init` safe to re-run
+    without appending a second copy."""
+    (tmp_path / "AGENTS.md").write_text("# my own instructions\n")
+
+    written = write_agent_instructions(tmp_path)
+
+    assert written == ["CLAUDE.md"]
+    assert (tmp_path / "AGENTS.md").read_text() == "# my own instructions\n"
 
 
 # --- CLI: from-scratch mode ----------------------------------------------
@@ -193,7 +212,7 @@ def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):
 # --- CLI: existing-repo mode -----------------------------------------------
 
 
-def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
+def test_cli_init_existing_repo_writes_no_source_files(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
     (tmp_path / "uv.lock").write_text("")
     monkeypatch.chdir(tmp_path)
@@ -208,6 +227,11 @@ def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
     assert manifest.dependency_manager is None
     assert not (tmp_path / "pyproject.toml").exists()
     assert not (tmp_path / ".git").exists()
+    # The agent-instruction files are the one exception to "only foro.yaml":
+    # they're additive, and this is the mode where they matter most - porting
+    # an existing server is when the stdio-transport rule gets broken.
+    assert (tmp_path / "AGENTS.md").exists()
+    assert (tmp_path / "CLAUDE.md").exists()
 
 
 def test_cli_init_existing_repo_offers_git_init_when_not_already_a_repo(tmp_path, monkeypatch):

@@ -24,12 +24,14 @@ from foro._python_project import DEPENDENCY_MANAGERS
 from foro.check import run_check
 from foro.dev import DevError, run_dev, stop
 from foro.init import (
+    AGENT_FILES,
     ManifestFields,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
     existing_manifest_diff,
     init_git_repo,
     scaffold_new,
+    write_agent_instructions,
     write_manifest,
 )
 
@@ -239,6 +241,14 @@ def _init_existing(dir_path: Path) -> None:
 
     write_manifest(dir_path, fields)
     typer.secho(f"✓ wrote {dir_path / 'foro.yaml'}", fg=typer.colors.GREEN)
+
+    written = write_agent_instructions(dir_path)
+    if written:
+        typer.secho(f"✓ wrote {' + '.join(written)}", fg=typer.colors.GREEN)
+    # Saying so matters: a silent skip is how someone ends up wondering why
+    # their agent doesn't know the rules this was supposed to install.
+    for name in (f for f in AGENT_FILES if f not in written):
+        typer.echo(f"  {name} already exists - left it alone")
 
     # Not already a repo, and deploying to foro.sh means pushing to GitHub -
     # worth asking here too, not just in from-scratch mode.
