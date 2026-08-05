@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from foro.dev import DevError, run_dev, start_server
+from foro.dev import DevError, run_dev, start_server, stop
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -16,11 +16,7 @@ def test_run_dev_succeeds_against_a_real_foro_run_server():
         assert result.port == 8000
         assert "add" in result.tool_names
     finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        stop(process)
 
 
 def test_run_dev_raises_on_stdio_only_server():

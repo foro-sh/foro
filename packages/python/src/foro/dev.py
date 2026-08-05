@@ -74,10 +74,22 @@ def mcp_handshake(port: int) -> list[str]:
     return handshake(local_url(port))
 
 
+def stop(process: subprocess.Popen) -> None:
+    """Shut down a server started by `run_dev`, escalating to a kill if it
+    doesn't go quietly. Everything holding one of these processes needs this
+    same sequence - the CLI on Ctrl+C and under `--once`, run_dev itself when
+    verification fails, and the tests - so it lives here once."""
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
 def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[subprocess.Popen, DevResult]:
     """Start the repo's server and verify it would pass foro.sh's deploy
     health gate. Returns the running process (caller owns its lifecycle -
-    terminate it when done) plus the verified port and tool list. Raises
+    `stop()` it when done) plus the verified port and tool list. Raises
     DevError if the port never opens in time; the process is cleaned up
     before raising.
     """
@@ -95,11 +107,7 @@ def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[sub
             )
         tool_names = mcp_handshake(manifest.port)
     except Exception:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        stop(process)
         raise
 
     return process, DevResult(port=manifest.port, tool_names=tool_names)
