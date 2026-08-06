@@ -103,9 +103,17 @@ jobs:
         working-directory: packages/python
 
   typescript:
-    name: TypeScript tests
+    name: TypeScript tests (node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor `engines` declares, and the version the publish workflow
+        # runs on. node:test differs enough between them to matter: on 22+
+        # `node --test <dir>` exits 0 even with a failing test, and glob
+        # arguments only work from 22. Testing one version hid both.
+        node-version: [18, 22]
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
@@ -113,17 +121,25 @@ jobs:
 
       - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - run: npm ci
         working-directory: packages/typescript
 
-      # `test` runs the compiled output (node --test dist/**/*.test.js), so
-      # the build is a prerequisite, not just an extra check. It currently
-      # matches no files and passes trivially - that's the point of wiring it
-      # up now, so the first real .test.ts is run rather than ignored.
+      # `test` runs the compiled output, so the build is a prerequisite rather
+      # than an extra check - there is nothing in dist/ to test without it.
       - run: npm run build
         working-directory: packages/typescript
 
-      - run: npm test
+      # A test command that matches nothing exits 0 and reads exactly like a
+      # passing run. This catches that one case - a zero count - and nothing
+      # subtler: `node --test <dir>` on 22+ reports "pass 1" for a directory
+      # it never really descended into, which looks fine here. The version
+      # matrix above is what catches that one.
+      - name: Run tests and confirm they were not vacuous
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+          grep -qE '^(# |ℹ )pass [1-9]' test-output.txt \
+            || { echo "::error::npm test reported no passing tests"; exit 1; }
         working-directory: packages/typescript
