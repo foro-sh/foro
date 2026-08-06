@@ -92,6 +92,48 @@ def test_with_token_still_rejects_a_token_of_the_wrong_shape(logged_in):
     assert "not a foro token" in result.output
 
 
+def test_the_device_flow_does_not_die_on_a_closed_stdin(monkeypatch, tmp_path):
+    """`input()` was called unconditionally, and its EOFError went straight
+    through every handler in _run_device_flow and out as a traceback - which
+    is what `foro auth login` under nohup, in a container, or driven by an
+    agent looked like. The grant is usable from another machine, so print the
+    URL and poll instead of dying on the convenience step."""
+    monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
+    monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    import foro.cli as cli_module
+    from foro.auth import AuthError, DeviceGrant
+
+    grant = DeviceGrant(
+        device_code="dev-code",
+        user_code="7A2F-K9QP",
+        verification_uri="https://foro.sh/cli",
+        verification_uri_complete="https://foro.sh/cli?code=7A2F-K9QP",
+        expires_in=900,
+        interval=5,
+    )
+    monkeypatch.setattr(cli_module, "start_device_flow", lambda host, label: grant)
+    opened = []
+    monkeypatch.setattr(cli_module, "_open_browser", opened.append)
+
+    def denied(host, grant, on_wait=None):
+        raise AuthError("authorization was denied in the browser")
+
+    monkeypatch.setattr(cli_module, "poll_for_token", denied)
+
+    # CliRunner hands the command a non-tty stdin, which is the case at issue.
+    result = runner.invoke(app, ["auth", "login"], input="")
+
+    assert not isinstance(result.exception, EOFError)
+    assert result.exit_code == 1
+    # It got all the way to polling, and said where to authorize on the way.
+    assert grant.verification_uri_complete in result.output
+    assert "denied" in result.output
+    # No terminal means no browser worth opening - the URL is on screen.
+    assert opened == []
+
+
 def test_the_device_flow_still_asks_before_replacing_a_login(logged_in):
     """Skipping the confirm is scoped to --with-token, not to login at large -
     the interactive path has a terminal to answer on and keeps the guard."""
