@@ -35,6 +35,13 @@ runner = CliRunner()
         # A dev stack is explicit about being plaintext.
         ("http://127.0.0.1:8000", "http://127.0.0.1:8000/mcp"),
         ("  https://x.foro.sh  ", "https://x.foro.sh/mcp"),
+        # A path the user typed is the one they mean. Appending to anything
+        # that merely didn't end in `/mcp` rewrote it: `/mcpserver` became
+        # `/mcpserver/mcp`, and a server behind a path prefix could not be
+        # verified at all.
+        ("https://x.foro.sh/mcpserver", "https://x.foro.sh/mcpserver"),
+        ("https://x.foro.sh/team/a/mcp", "https://x.foro.sh/team/a/mcp"),
+        ("https://x.foro.sh/prefix/", "https://x.foro.sh/prefix"),
     ],
 )
 def test_url_normalisation(raw, expected):
