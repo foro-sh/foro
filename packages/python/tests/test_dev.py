@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import socket
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -24,8 +26,63 @@ def test_run_dev_succeeds_against_a_real_foro_run_server():
 
 
 def test_run_dev_raises_on_stdio_only_server():
-    with pytest.raises(DevError, match="never opened port"):
+    """The footgun this whole command exists to catch. It surfaces as an
+    immediate exit rather than a hang: foro dev gives the child DEVNULL for
+    stdin, so a stdio server reads EOF and stops. Either way the answer is
+    the same, which is why the hint is on both messages."""
+    with pytest.raises(DevError, match="foro.run"):
         run_dev(FIXTURES / "stdio-only", timeout=5)
+
+
+def _dead_on_arrival(tmp_path, port, exit_code=3):
+    (tmp_path / "foro.yaml").write_text(
+        f"name: my-server\nentrypoint: server.py\nport: {port}\n"
+    )
+    (tmp_path / "server.py").write_text(f"import sys\nsys.exit({exit_code})\n")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "my-server"\nversion = "0.1.0"\nrequires-python = ">=3.10"\n'
+    )
+    return tmp_path
+
+
+def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
+    """It used to poll the port for the whole timeout regardless - a server
+    that exited in half a second still cost the full 60 seconds."""
+    started = time.monotonic()
+
+    with pytest.raises(DevError, match="exited with status 3"):
+        run_dev(_dead_on_arrival(tmp_path, 8137), timeout=30)
+
+    assert time.monotonic() - started < 15
+
+
+def test_a_dead_server_reports_its_exit_status(tmp_path):
+    """The old message said only "never opened port" and asked about stdio.
+    It never mentioned that the process had exited, or with what."""
+    with pytest.raises(DevError) as exc_info:
+        run_dev(_dead_on_arrival(tmp_path, 8138), timeout=30)
+
+    assert "exited with status 3" in str(exc_info.value)
+    assert "output is above" in str(exc_info.value)
+
+
+def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
+    """The TCP probe cannot tell whose listener it found. With an unrelated
+    process on the same port - a stale foro dev, another project on 8000 -
+    connecting succeeded and dev reported a healthy server while the one it
+    started was already dead. Refusing the port up front is what makes the
+    probe's answer mean something afterwards."""
+    squatter = socket.socket()
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    squatter.listen(8)
+    port = squatter.getsockname()[1]
+
+    try:
+        with pytest.raises(DevError, match="already in use"):
+            run_dev(_dead_on_arrival(tmp_path, port), timeout=30)
+    finally:
+        squatter.close()
 
 
 def test_start_server_loads_dotenv(tmp_path, monkeypatch):
