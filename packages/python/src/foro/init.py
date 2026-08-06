@@ -21,6 +21,7 @@ testable without a terminal attached.
 from __future__ import annotations
 
 import difflib
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,8 @@ from pathlib import Path
 import yaml as pyyaml
 
 from foro._manifest import DEFAULT_PORT, DEFAULT_PYTHON_VERSION
+from foro._proc import MissingToolError
+from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
 
 # Candidates checked in this order; only files that both exist and look like
@@ -293,37 +296,101 @@ _ENV_EXAMPLE_TEMPLATE = '''# Copy to .env for local development - foro dev loads
 '''
 
 
+class ScaffoldError(Exception):
+    """Scaffolding could not be completed. Whatever it had written is gone by
+    the time this is raised."""
+
+
 def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False) -> None:
     """Write a from-scratch project: app.py, server.py (the entrypoint -
     foro.yaml always points here), tools/, pyproject.toml, foro.yaml, a
     locked uv.lock (`uv lock`, so the golden round-trip - init's output
     must pass check - holds without a manual step), README.md, .gitignore,
-    .env.example, and tests/."""
+    .env.example, and tests/.
+
+    All or nothing. `uv lock` runs last and can fail - no uv installed, or an
+    unresolvable dependency set - and it used to leave every other file behind
+    on the way out, so `foro init` reported failure while creating a directory
+    that then blocked the retry ("already exists and is not empty"). Anything
+    written here is removed again if the lock step doesn't finish.
+    """
+    # Only remove what this call created. `foro init <name>` guarantees an
+    # empty or absent target, but scaffold_new is callable on its own and
+    # must not take a user's directory with it.
+    created_root = not dir_path.exists()
+    written: list[Path] = []
+
+    def write(path: Path, text: str) -> None:
+        path.write_text(text)
+        written.append(path)
+
     dir_path.mkdir(parents=True, exist_ok=True)
     tools_dir = dir_path / "tools"
     tests_dir = dir_path / "tests"
     tools_dir.mkdir(parents=True, exist_ok=True)
     tests_dir.mkdir(parents=True, exist_ok=True)
 
-    (dir_path / "app.py").write_text(_APP_TEMPLATE.format(name=fields.name))
-    (dir_path / fields.entrypoint).write_text(_SERVER_TEMPLATE)
-    (tools_dir / "__init__.py").write_text(_TOOLS_INIT_TEMPLATE)
-    (tools_dir / "add.py").write_text(_TOOL_ADD_TEMPLATE)
-    (tests_dir / "test_tools.py").write_text(
-        _TEST_TOOLS_TEMPLATE.replace("__ENTRYPOINT__", Path(fields.entrypoint).stem)
-    )
-    (dir_path / "pyproject.toml").write_text(
-        _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version)
-    )
-    (dir_path / "README.md").write_text(_README_TEMPLATE.format(name=fields.name))
-    (dir_path / ".gitignore").write_text(_GITIGNORE_TEMPLATE)
-    (dir_path / ".env.example").write_text(_ENV_EXAMPLE_TEMPLATE)
-    write_manifest(dir_path, fields)
+    try:
+        write(dir_path / "app.py", _APP_TEMPLATE.format(name=fields.name))
+        write(dir_path / fields.entrypoint, _SERVER_TEMPLATE)
+        write(tools_dir / "__init__.py", _TOOLS_INIT_TEMPLATE)
+        write(tools_dir / "add.py", _TOOL_ADD_TEMPLATE)
+        write(
+            tests_dir / "test_tools.py",
+            _TEST_TOOLS_TEMPLATE.replace("__ENTRYPOINT__", Path(fields.entrypoint).stem),
+        )
+        write(
+            dir_path / "pyproject.toml",
+            _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version),
+        )
+        write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
+        write(dir_path / ".gitignore", _GITIGNORE_TEMPLATE)
+        write(dir_path / ".env.example", _ENV_EXAMPLE_TEMPLATE)
+        write_manifest(dir_path, fields)
+        written.append(dir_path / "foro.yaml")
 
-    subprocess.run(["uv", "lock"], cwd=dir_path, check=True, capture_output=True)
+        try:
+            _run(["uv", "lock"], cwd=dir_path, check=True)
+        except MissingToolError as err:
+            raise ScaffoldError(
+                f"{err}. A scaffolded project is locked with `uv lock`, and foro dev "
+                "runs it with `uv run`."
+            ) from None
+        except subprocess.CalledProcessError as err:
+            raise ScaffoldError(
+                f"`uv lock` failed in {dir_path}:\n{(err.stderr or '').strip()}"
+            ) from None
+    except BaseException:
+        _remove_scaffold(dir_path, written, created_root)
+        raise
+
     if git_init:
         init_git_repo(dir_path)
 
 
+def _remove_scaffold(dir_path: Path, written: list[Path], created_root: bool) -> None:
+    if created_root:
+        shutil.rmtree(dir_path, ignore_errors=True)
+        return
+    # The target pre-existed, so take back only what was written - plus the
+    # two directories, which are ours and are empty again by now.
+    for path in written:
+        path.unlink(missing_ok=True)
+    for name in ("tools", "tests"):
+        directory = dir_path / name
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+
+
+class GitInitError(Exception):
+    """`git init` could not run. Never fatal to the project itself - the files
+    are written and valid, they are simply not a repo yet."""
+
+
 def init_git_repo(dir_path: Path) -> None:
-    subprocess.run(["git", "init"], cwd=dir_path, check=True, capture_output=True)
+    try:
+        _run(["git", "init"], cwd=dir_path, check=True)
+    except MissingToolError as err:
+        raise GitInitError(str(err)) from None
+    except subprocess.CalledProcessError as err:
+        raise GitInitError(f"`git init` failed: {(err.stderr or '').strip()}") from None

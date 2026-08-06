@@ -25,6 +25,7 @@ from pathlib import Path
 
 from foro._manifest import parse_and_validate
 from foro._mcp import handshake, local_url
+from foro._proc import popen
 
 DEFAULT_TIMEOUT = 60.0
 POLL_INTERVAL = 0.5
@@ -59,7 +60,7 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
         **dotenv,
         "MCP_PORT": str(port),
     }
-    return subprocess.Popen(
+    return popen(
         ["uv", "run", entrypoint],
         cwd=build_dir,
         env=env,

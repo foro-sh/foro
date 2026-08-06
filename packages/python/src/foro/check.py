@@ -12,11 +12,12 @@ Layers two things on top of each other:
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from foro._manifest import ManifestError, parse_and_validate
+from foro._proc import MissingToolError
+from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
 
 # Breaks the platform's metrics shim (infra/templates/sitecustomize.py),
@@ -68,13 +69,24 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
                 "no uv.lock committed - builds will use a slower, non-reproducible "
                 "unlocked install. Run `uv lock`."
             )
-        elif not _uv_lock_in_sync(build_dir):
-            return CheckResult(
-                ok=False,
-                reason="lockfile_out_of_sync",
-                message="uv.lock is out of sync with pyproject.toml - `uv sync --frozen` "
-                "would fail the build. Run `uv lock`.",
-            )
+        else:
+            # A lockfile check needs `uv` on this machine, but nothing else
+            # here does - so a missing uv downgrades this one rule to a
+            # warning instead of failing a repo that may well be fine. Saying
+            # "not checked" is honest; claiming the repo passed a check that
+            # never ran is not.
+            try:
+                in_sync = _uv_lock_in_sync(build_dir)
+            except MissingToolError as err:
+                warnings.append(f"{err}. uv.lock was not checked against pyproject.toml.")
+                in_sync = True
+            if not in_sync:
+                return CheckResult(
+                    ok=False,
+                    reason="lockfile_out_of_sync",
+                    message="uv.lock is out of sync with pyproject.toml - `uv sync --frozen` "
+                    "would fail the build. Run `uv lock`.",
+                )
 
     bad_import_file = _find_wrong_fastmcp_import(build_dir)
     if bad_import_file:
@@ -88,13 +100,9 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
 
 
 def _uv_lock_in_sync(build_dir: Path) -> bool:
-    result = subprocess.run(
-        ["uv", "lock", "--check"],
-        cwd=build_dir,
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
+    """Raises MissingToolError when `uv` isn't installed - the caller decides
+    what a check it could not run means."""
+    return _run(["uv", "lock", "--check"], cwd=build_dir).returncode == 0
 
 
 # Directories never worth descending into when scanning for the wrong

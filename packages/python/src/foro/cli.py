@@ -39,8 +39,11 @@ from foro.auth import (
 )
 from foro.check import run_check
 from foro.dev import DevError, run_dev
+from foro._proc import MissingToolError
 from foro.init import (
+    GitInitError,
     ManifestFields,
+    ScaffoldError,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
     existing_manifest_diff,
@@ -211,7 +214,16 @@ def _init_from_scratch(target: Path) -> None:
     # filename choice like existing-repo mode's entrypoint. See
     # scaffold_new's docstring.
     fields = ManifestFields(name=name, entrypoint="server.py", python_version=python_version, port=port)
-    scaffold_new(target, fields, git_init=git_init)
+    try:
+        scaffold_new(target, fields, git_init=git_init)
+    except ScaffoldError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    except GitInitError as err:
+        # The project itself is written and valid - only the repo is missing,
+        # and `git init` is one command away. Failing the whole scaffold over
+        # it would throw away work that succeeded.
+        typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
     typer.echo(f"  cd {target} && foro dev")
@@ -259,7 +271,11 @@ def _init_existing(dir_path: Path) -> None:
     # Not already a repo, and deploying to foro.sh means pushing to GitHub -
     # worth asking here too, not just in from-scratch mode.
     if not (dir_path / ".git").exists() and _confirm("Initialize a git repo here?", default=True):
-        init_git_repo(dir_path)
+        try:
+            init_git_repo(dir_path)
+        except GitInitError as err:
+            # foro.yaml is already written, which is all this mode promises.
+            typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
 
 @app.command()
@@ -272,7 +288,7 @@ def dev(
     except ManifestError as err:
         typer.secho(f"✗ {err} [{err.reason}]", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    except DevError as err:
+    except (DevError, MissingToolError) as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
 
