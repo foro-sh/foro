@@ -91,3 +91,38 @@ def test_wrong_fastmcp_import_detected_outside_entrypoint(tmp_path):
 
     assert result.ok
     assert any("app.py" in w and "mcp.server.fastmcp" in w for w in result.warnings)
+
+
+_MARKER = "from mcp.server.fastmcp import FastMCP\n"
+
+
+def _project(tmp_path):
+    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: server.py\n")
+    (tmp_path / "server.py").write_text("import foro\n")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
+    return tmp_path
+
+
+def test_the_wrong_import_is_still_found_in_the_users_own_code(tmp_path):
+    _project(tmp_path)
+    (tmp_path / "app.py").write_text(_MARKER)
+
+    assert any("app.py" in w for w in run_check(tmp_path).warnings)
+
+
+def test_vendored_and_hidden_directories_are_not_scanned(tmp_path):
+    """A hit inside an installed package, a build tree, or a test asserting
+    on the marker is not the user's code. Only .venv/__pycache__/.git were
+    skipped, so .tox, node_modules and site-packages all false-positived."""
+    _project(tmp_path)
+    for buried in (
+        ".tox/py312/lib/python3.12/site-packages/mcp/server/x.py",
+        "node_modules/thing/y.py",
+        ".venv/lib/site-packages/fastmcp/z.py",
+        "tests/test_imports.py",
+    ):
+        target = tmp_path / buried
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_MARKER)
+
+    assert not [w for w in run_check(tmp_path).warnings if "mcp.server.fastmcp" in w]
