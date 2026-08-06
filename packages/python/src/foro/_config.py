@@ -69,6 +69,13 @@ def _write_all(hosts: dict) -> None:
     # bearer token and must never exist as world-readable, not even briefly.
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:
+        # os.open's mode applies only when it creates the file, so an already
+        # existing hosts.yml kept whatever mode it had and a token went
+        # straight into a world-readable file. Narrow it on the descriptor
+        # we already hold rather than on the path: no window where the name
+        # could be swapped for something else between the two calls.
+        if os.name != "nt":
+            os.fchmod(handle.fileno(), 0o600)
         yaml.safe_dump(hosts, handle, sort_keys=True)
 
 
