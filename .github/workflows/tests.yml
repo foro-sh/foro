@@ -3,15 +3,25 @@ name: Tests
 # Until this existed, nothing ran the test suites - the only PR checks were
 # commitlint and the plugin-skills diff, so a release could publish to PyPI
 # and npm with every test red and no signal anywhere.
-
+#
+# Two ways in, and deliberately not three:
+#   - `pull_request`, as an ordinary PR check
+#   - `workflow_call`, from semantic-release.yml, where the release job
+#     `needs:` it - that is what actually blocks a publish on red tests
+#
+# There is no `push: branches: [main]` trigger. Running on the push *and*
+# being called by the release workflow on the same push would run both suites
+# twice per merge, and only one of those runs would have any power to stop the
+# release. The `workflow_call` arm is the one with the power, so it is the one
+# main gets.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
 
-# A superseded PR run tells us nothing, so cancel it. Pushes to main are left
-# alone: those runs gate a release, and cancelling one would hide the failure
-# that should have stopped it.
+# A superseded PR run tells us nothing, so cancel it. Release-gating runs are
+# left alone: cancelling one would hide the failure that should have stopped
+# the publish. `github.event_name` is the *caller's* event under
+# workflow_call, so a merge to main reads as `push` here and is not cancelled.
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

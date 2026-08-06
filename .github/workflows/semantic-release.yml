@@ -63,9 +63,23 @@ jobs:
             npx commitlint --from "$BEFORE" --to "$AFTER" --verbose
           fi
 
+  # The release gate. tests.yml has no `push` trigger of its own precisely so
+  # that this is the run that decides - a separate workflow triggered by the
+  # same push reports independently and cannot block anything, which is how
+  # every suite could be red while semantic-release published anyway.
+  #
+  # Skipped on pull_request: tests.yml already runs itself there, and a second
+  # copy through here would double every PR's CI for no extra signal.
+  tests:
+    name: Tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tests.yml
+
   release:
     name: Release
-    needs: commitlint
+    needs: [commitlint, tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
