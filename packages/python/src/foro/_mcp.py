@@ -10,6 +10,16 @@ drift into disagreeing about what "working" means.
 
 from __future__ import annotations
 
+import sys
+
+if sys.version_info < (3, 11):
+    # `BaseExceptionGroup` is a builtin only from 3.11. Below that the group
+    # anyio's task group raises is the `exceptiongroup` backport's, and the
+    # bare builtin name in _root_cause is a NameError - which turned every
+    # failed handshake on 3.10 into a traceback instead of a HandshakeError,
+    # on a floor pyproject.toml declares as supported.
+    from exceptiongroup import BaseExceptionGroup
+
 # A deployed server is a network round trip away and may be cold-starting;
 # generous enough for that, short enough that a hung endpoint still fails.
 DEFAULT_TIMEOUT = 30.0

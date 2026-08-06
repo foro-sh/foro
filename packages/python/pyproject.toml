@@ -28,6 +28,10 @@ dependencies = [
   "mcp>=1.24,<2.0",
   "anyio>=4.0",
   "python-dotenv>=1.0",
+  # anyio already pulls this in below 3.11, but _mcp.py imports it by name to
+  # unwrap the group a failed handshake arrives in - so it is a direct
+  # dependency here rather than a transitive one we happen to get away with.
+  "exceptiongroup>=1.0; python_version < '3.11'",
 ]
 authors = [{ name = "Foro" }]
 license = { text = "MIT" }
