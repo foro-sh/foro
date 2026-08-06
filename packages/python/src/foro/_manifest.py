@@ -60,12 +60,21 @@ class ValidatedManifest:
 
 def is_valid_repo_path(p: str) -> bool:
     """A relative path inside the repo: no `..` traversal, absolute leading
-    `/`, NUL byte, or backslash, and every `/`-separated segment restricted to
-    _PATH_SEGMENT_RE (platform issue #605 - a bare traversal/absolute check
-    still let shell metacharacters and newlines through). Nested layouts are
-    allowed (platform issue #268, e.g. `src/server.py`). Used for every
-    path-shaped field the platform interpolates into a Dockerfile or shell
-    call: `manifest_path`, `entrypoint`, `build_path`.
+    `/`, NUL byte, or backslash, no segment starting with `-`, and every
+    `/`-separated segment restricted to _PATH_SEGMENT_RE (platform issue #605
+    - a bare traversal/absolute check still let shell metacharacters and
+    newlines through). Nested layouts are allowed (platform issue #268, e.g.
+    `src/server.py`). Used for every path-shaped field the platform
+    interpolates into a Dockerfile or shell call: `manifest_path`,
+    `entrypoint`, `build_path`.
+
+    The leading-`-` rule closes what #605's segment regex left open. `-` is
+    inside the allowed character class, so `--isolated` and `-rf` validated as
+    paths, and a path is not always read as one: `foro dev` runs
+    `uv run <entrypoint>`, where an entrypoint that starts with a dash is an
+    option to uv rather than a file. Same shape wherever these land in an
+    argv or a shell word. No real file is spelled this way, and one that is
+    can still be reached as `./-x.py`.
 
     `fullmatch`, not `match`: without it, Python's `$` matches just before a
     trailing newline at the end of the string (unlike JavaScript's, which is
@@ -73,7 +82,10 @@ def is_valid_repo_path(p: str) -> bool:
     """
     if "\0" in p or "\\" in p:
         return False
-    return all(segment != ".." and _PATH_SEGMENT_RE.fullmatch(segment) for segment in p.split("/"))
+    return all(
+        segment != ".." and not segment.startswith("-") and _PATH_SEGMENT_RE.fullmatch(segment)
+        for segment in p.split("/")
+    )
 
 
 def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest:
