@@ -18,7 +18,8 @@
         }
     },
     "files": [
-        "dist"
+        "dist",
+        "!dist/**/*.test.*"
     ],
     "scripts": {
         "build": "node scripts/generate-manifest-cases.mjs && tsc -p tsconfig.json",
