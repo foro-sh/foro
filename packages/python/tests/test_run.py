@@ -124,3 +124,31 @@ def test_run_does_not_override_an_explicit_banner_preference(monkeypatch):
     run(FakeBannerServer())
 
     assert os.environ["FASTMCP_SHOW_SERVER_BANNER"] == "true"
+
+
+def test_an_explicit_port_is_not_mistaken_for_no_port(monkeypatch):
+    """`port or ...` read an explicit 0 as "not given" and fell through to
+    $MCP_PORT, so the caller's argument vanished without a word. 0 is not a
+    port foro.sh can health-check either - it binds whatever the OS hands
+    out, and the probe checks the port the manifest declared."""
+    monkeypatch.setenv("MCP_PORT", "9001")
+
+    with pytest.raises(ValueError, match="between 1 and 65535"):
+        run(FakeStandaloneFastMCP(), port=0)
+
+
+@pytest.mark.parametrize("bad", [-1, 65536])
+def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
+    monkeypatch.delenv("MCP_PORT", raising=False)
+
+    with pytest.raises(ValueError, match="between 1 and 65535"):
+        run(FakeStandaloneFastMCP(), port=bad)
+
+
+def test_a_non_numeric_mcp_port_names_the_variable(monkeypatch):
+    """It used to surface as `invalid literal for int() with base 10` - which
+    names neither MCP_PORT nor the server it stopped from starting."""
+    monkeypatch.setenv("MCP_PORT", "eight thousand")
+
+    with pytest.raises(ValueError, match="MCP_PORT is not a number"):
+        run(FakeStandaloneFastMCP())

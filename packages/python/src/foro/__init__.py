@@ -53,6 +53,30 @@ def _accepts_show_banner(run_method) -> bool:
         return False
 
 
+def _resolve_port(port: int | None) -> int:
+    """The port to bind, from the explicit argument or $MCP_PORT.
+
+    `port or ...` treated an explicit 0 as "not given" and silently fell
+    through to the environment. It also let a non-numeric $MCP_PORT surface as
+    a bare `invalid literal for int()`, which names neither the variable nor
+    the server it stopped from starting. Both end up as a server on a port
+    nobody asked for, or no server at all, at deploy time.
+    """
+    if port is None:
+        raw = os.environ.get("MCP_PORT", "8000")
+        try:
+            port = int(raw)
+        except ValueError:
+            raise ValueError(f"MCP_PORT is not a number: {raw!r}") from None
+
+    if not 1 <= port <= 65535:
+        # 0 would bind whatever the OS handed out. foro.sh's health probe
+        # checks the port the manifest declared, so a random one fails the
+        # deploy in a way that looks like the server never started.
+        raise ValueError(f"port must be between 1 and 65535, got {port}")
+    return port
+
+
 def run(server, *, port: int | None = None) -> None:
     """Run an MCP server the way foro.sh expects: streamable HTTP, bound on
     all interfaces, on $MCP_PORT. Identical locally and deployed.
@@ -61,7 +85,7 @@ def run(server, *, port: int | None = None) -> None:
     mcp.server.fastmcp.FastMCP, or a low-level Server) - it's duck-typed, not
     checked against a specific class, so it just needs a compatible .run().
     """
-    resolved_port = port or int(os.environ.get("MCP_PORT", "8000"))
+    resolved_port = _resolve_port(port)
 
     # Only reaches a FastMCP imported after this point - fastmcp reads the
     # variable into its settings object at import time, and by the time a
