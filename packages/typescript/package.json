@@ -23,7 +23,7 @@
     "scripts": {
         "build": "node scripts/generate-manifest-cases.mjs && tsc -p tsconfig.json",
         "prepublishOnly": "npm run build",
-        "test": "node --test dist/**/*.test.js"
+        "test": "node --test dist/*.test.js"
     },
     "publishConfig": {
         "access": "public"
