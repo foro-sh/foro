@@ -26,7 +26,7 @@ deployable in the first place.
 
 foro.sh takes a locally running [MCP](https://modelcontextprotocol.io) server
 and turns it into a publicly reachable one: sign in with GitHub, pick a repo,
-add secrets, click Deploy. The platform builds it, runs it in an isolated
+add secrets, click deploy. The platform builds it, runs it in an isolated
 container, and TLS-terminates it behind a stable subdomain.
 
 The `foro` package in this repository is the other half of that contract —
