@@ -410,6 +410,16 @@ def _read_token_from_stdin() -> str:
     return token
 
 
+def _open_browser(url: str) -> None:
+    """Best effort. `webbrowser.open` raises on a box with no browser at all,
+    and the URL is already on screen for exactly that case - losing the login
+    because the convenience step failed would be the wrong trade."""
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
 def _run_device_flow(host: str) -> str:
     try:
         grant = start_device_flow(host, label=socket.gethostname())
@@ -418,10 +428,28 @@ def _run_device_flow(host: str) -> str:
         raise typer.Exit(code=1) from None
 
     typer.secho(f"! First copy your one-time code: {grant.user_code}", fg=typer.colors.YELLOW)
-    typer.echo(f"Press Enter to open {host} in your browser... (or paste {grant.verification_uri_complete})")
+    interactive = sys.stdin.isatty()
+    if interactive:
+        typer.echo(
+            f"Press Enter to open {host} in your browser... "
+            f"(or paste {grant.verification_uri_complete})"
+        )
+    else:
+        # No terminal to press Enter on, and nowhere to open a browser. The
+        # grant is still perfectly usable from another machine, so print the
+        # URL and start polling rather than dying - `input()` on a closed
+        # stdin raised EOFError straight through the handlers below and out
+        # as a traceback, which is what running this under nohup, in a
+        # container, or from an agent used to look like.
+        typer.echo(f"Open this to authorize: {grant.verification_uri_complete}")
     try:
-        input()
-        webbrowser.open(grant.verification_uri_complete)
+        if interactive:
+            try:
+                input()
+            except EOFError:
+                # stdin was a tty when asked and closed underneath us.
+                typer.echo("")
+            _open_browser(grant.verification_uri_complete)
 
         # ponytail: a redrawn line, not a spinner library - it has to read as
         # progress rather than a hang, and that's all it takes. Skipped off a
