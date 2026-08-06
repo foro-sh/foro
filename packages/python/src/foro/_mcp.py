@@ -76,11 +76,8 @@ def normalize_url(raw: str) -> str:
     """Accept what a user actually has in hand - the URL `foro deploy` printed
     (`https://<slug>.foro.sh`) - and point it at the MCP path.
 
-    Only a URL with no path of its own gets `/mcp` appended. Appending to
-    anything that merely didn't end in `/mcp` rewrote paths the user had
-    typed deliberately: `https://x.foro.sh/mcpserver` became
-    `.../mcpserver/mcp`, and a server mounted under a prefix could not be
-    verified at all. A path that is already there is the one the user means.
+    Only a URL with no path of its own gets `/mcp` appended - a path that is
+    already there is the one the user means.
     """
     url = raw.strip().rstrip("/")
     if not url.startswith(("http://", "https://")):

@@ -69,13 +69,9 @@ def logged_in(monkeypatch, tmp_path):
 
 
 def test_with_token_does_not_lose_the_token_to_the_re_login_prompt(logged_in):
-    """`--with-token` is the CI path, and stdin is the token. Confirming
-    "already logged in, log in again?" first read that line as the answer,
-    rejected it, and aborted at EOF - so re-authenticating a machine that was
-    already logged in was impossible without also passing --force.
-
-    The host is unreachable on purpose: getting as far as a rejected *network*
-    call is the proof the token was read and used rather than swallowed.
+    """stdin is the token, and the re-login confirm used to eat it as its
+    answer. The host is unreachable on purpose - reaching a rejected network
+    call proves the token was read rather than swallowed.
     """
     result = runner.invoke(app, ["auth", "login", "--with-token"], input=TOKEN + "\n")
 
@@ -93,11 +89,8 @@ def test_with_token_still_rejects_a_token_of_the_wrong_shape(logged_in):
 
 
 def test_the_device_flow_does_not_die_on_a_closed_stdin(monkeypatch, tmp_path):
-    """`input()` was called unconditionally, and its EOFError went straight
-    through every handler in _run_device_flow and out as a traceback - which
-    is what `foro auth login` under nohup, in a container, or driven by an
-    agent looked like. The grant is usable from another machine, so print the
-    URL and poll instead of dying on the convenience step."""
+    """`input()` ran unconditionally and its EOFError escaped every handler -
+    what `foro auth login` under nohup or in a container looked like."""
     monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
     monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -135,8 +128,7 @@ def test_the_device_flow_does_not_die_on_a_closed_stdin(monkeypatch, tmp_path):
 
 
 def test_the_device_flow_still_asks_before_replacing_a_login(logged_in):
-    """Skipping the confirm is scoped to --with-token, not to login at large -
-    the interactive path has a terminal to answer on and keeps the guard."""
+    """Skipping the confirm is scoped to --with-token, not login at large."""
     result = runner.invoke(app, ["auth", "login"], input="n\n")
 
     assert result.exit_code == 1

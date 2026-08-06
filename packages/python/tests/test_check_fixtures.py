@@ -111,9 +111,8 @@ def test_the_wrong_import_is_still_found_in_the_users_own_code(tmp_path):
 
 
 def test_vendored_and_hidden_directories_are_not_scanned(tmp_path):
-    """A hit inside an installed package, a build tree, or a test asserting
-    on the marker is not the user's code. Only .venv/__pycache__/.git were
-    skipped, so .tox, node_modules and site-packages all false-positived."""
+    """Only .venv/__pycache__/.git were skipped, so .tox, node_modules and
+    site-packages all false-positived."""
     _project(tmp_path)
     for buried in (
         ".tox/py312/lib/python3.12/site-packages/mcp/server/x.py",

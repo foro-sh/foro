@@ -56,13 +56,9 @@ class Identity:
     workspace: str | None
 
 
-# Every response below is read as a shape, not trusted as one. A 2xx is not a
-# promise about the body: a captive portal, a proxy error page, or a
-# misrouted request all answer 200 with something else entirely, and _api's
-# decoder hands back a plain string when the body wasn't JSON. Indexing that
-# raises TypeError or KeyError from inside the auth module, which reaches the
-# user as a traceback naming a dict key - so each of these says what was
-# wrong with the response instead.
+# A 2xx is not a promise about the body - a captive portal or proxy error page
+# answers 200 with something else, and _api hands back a plain string when the
+# body wasn't JSON. Indexing that is a traceback naming a dict key.
 def _object(payload, what: str) -> dict:
     if not isinstance(payload, dict):
         raise AuthError(f"{what} was not a JSON object - is this a foro.sh instance?")
@@ -116,18 +112,14 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
     `on_wait(elapsed)` is called before each sleep so the caller can render
     progress - this loop owns the timing, not the display.
     """
-    # A server that sends 0 or a negative cadence would otherwise turn this
-    # into a busy loop against its own token endpoint. RFC 8628's default is
-    # the floor when the number it sent is not one we can poll on.
+    # A 0 or negative cadence would busy-loop the token endpoint.
     interval = float(grant.interval) if grant.interval > 0 else DEFAULT_INTERVAL
     started = time.monotonic()
     deadline = started + grant.expires_in
 
     while True:
-        # Ask first, sleep after. Sleeping first meant an approval that had
-        # already happened - the common case, since the human is sent to the
-        # browser before this loop starts - still waited out a full interval
-        # before anyone asked the server about it.
+        # Ask first, sleep after: the human is sent to the browser before
+        # this loop starts, so the approval is often already in.
         try:
             payload = _object(
                 _api.request(
@@ -138,9 +130,7 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
                 ),
                 "the device-token response",
             )
-            # Checked here rather than at the call site: a 200 with no usable
-            # token is this loop's failure to report, and `payload["access_token"]`
-            # in cli.py was a bare KeyError traceback.
+            # A 200 with no usable token is this loop's failure to report.
             _string(payload, "access_token", "the device-token response")
             return payload
         except ApiError as err:
@@ -169,10 +159,8 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
 
 
 def _widened(payload, current: float) -> float:
-    """The interval to adopt after a `slow_down`. Anything the server didn't
-    send as a usable positive number falls back to widening locally - taking a
-    0 at face value would busy-loop on the endpoint that just asked us to slow
-    down, which is the opposite of what it asked for."""
+    """The interval to adopt after a `slow_down`. Anything but a usable
+    positive number widens locally instead."""
     sent = payload.get("interval") if isinstance(payload, dict) else None
     return float(sent) if _is_positive_number(sent) else current + SLOW_DOWN_STEP
 
@@ -200,10 +188,9 @@ def revoke(host: str, token: str) -> None:
     poll at all. So logout lists the caller's tokens and matches on
     `token_prefix`, the first 8 characters of the random part.
     """
+    # Slicing another shape yields the wrong eight characters, which then
+    # matches nothing - or somebody else's row.
     if not token.startswith(TOKEN_PREFIX):
-        # Nothing downstream would notice: slicing a token of another shape
-        # just yields the wrong eight characters, and the request that follows
-        # then matches nothing, or - far worse - something else.
         raise AuthError(f"this does not look like a foro token (no {TOKEN_PREFIX} prefix)")
     prefix = token[len(TOKEN_PREFIX) :][:8]
 
@@ -224,9 +211,7 @@ def revoke(host: str, token: str) -> None:
             "more than one token matches this prefix - revoke it on /account instead"
         )
 
-    # The id goes straight into the DELETE path, so it has to be one path
-    # segment and nothing else - a value carrying `/` or `..` would aim the
-    # delete at a different endpoint than the one meant.
+    # The id goes into the DELETE path, so it has to be one segment.
     raw_id = matches[0].get("id")
     token_id = str(raw_id) if isinstance(raw_id, (str, int)) and not isinstance(raw_id, bool) else ""
     if not token_id or "/" in token_id or token_id in (".", ".."):

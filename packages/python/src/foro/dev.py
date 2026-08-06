@@ -81,9 +81,7 @@ def wait_for_port(
 ) -> bool:
     """Wait for something to accept a TCP connection on `port`.
 
-    Pass `process` to stop waiting on a server that has already died. Without
-    it this polls the full timeout no matter what - a server that exits in
-    half a second still cost 60 seconds before `foro dev` said anything.
+    Pass `process` to stop waiting on a server that has already died.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -95,10 +93,8 @@ def wait_for_port(
     return False
 
 
-# A stdio server under `foro dev` doesn't hang with the port closed - it gets
-# DEVNULL for stdin, reads EOF, and exits at once. So "exited immediately" and
-# "never opened the port" are two faces of the same footgun, and the hint
-# belongs on both.
+# A stdio server here gets DEVNULL for stdin and exits at once rather than
+# hanging, so both failure modes want this hint.
 _STDIO_HINT = (
     "If the entrypoint calls a plain server.run() / mcp.run(), that defaults to "
     "stdio transport, which never opens a port and would fail foro.sh's deploy "
@@ -109,10 +105,7 @@ _STDIO_HINT = (
 def _unhealthy_reason(process: subprocess.Popen, port: int, timeout: float) -> str:
     status = process.poll()
     if status is not None:
-        # The child inherits this process's stdout and stderr, so whatever it
-        # said on the way out is already on screen. Naming the exit status and
-        # pointing at that output beats guessing at a cause the traceback
-        # right above may well state outright.
+        # The child inherits our stdout/stderr, so its output is on screen.
         return (
             f"the server exited with status {status} without opening port {port} - "
             f"its output is above. {_STDIO_HINT}"
@@ -136,11 +129,8 @@ def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[sub
     repo_dir = Path(repo_dir)
     manifest = parse_and_validate(repo_dir, ".")
 
-    # Claim the port before starting, because afterwards there is no way to
-    # tell whose listener the probe found. A stale `foro dev`, another project
-    # on 8000, anything - the connection succeeds either way, and dev would
-    # report a healthy server while the one it just started was already dead.
-    # Checking first turns a false green into the actual problem.
+    # Claim the port first: afterwards the probe cannot tell whose listener
+    # it found, and a squatter reads as a healthy server.
     if port_is_open(manifest.port):
         raise DevError(
             f"port {manifest.port} is already in use - something else is listening on "
