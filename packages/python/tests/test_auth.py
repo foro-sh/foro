@@ -281,3 +281,20 @@ def test_saving_never_leaves_the_file_group_or_world_readable():
     _config.save("foro.sh", _config.Credentials(token="foro_pat_abc"))
     mode = _config.config_path().stat().st_mode
     assert not mode & (stat.S_IRWXG | stat.S_IRWXO)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_saving_narrows_a_file_that_was_already_too_open():
+    """The case the test above cannot see: os.open's mode argument applies
+    only when it creates the file, so a hosts.yml that already existed as
+    0644 - restored dotfiles, a bad umask under an older version, a file a
+    user made by hand - kept that mode and took the token anyway."""
+    path = _config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n")
+    path.chmod(0o644)
+
+    _config.save("foro.sh", _config.Credentials(token="foro_pat_abc"))
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert not _config.has_insecure_permissions()
