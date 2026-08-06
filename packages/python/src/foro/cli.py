@@ -220,9 +220,7 @@ def _init_from_scratch(target: Path) -> None:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
     except GitInitError as err:
-        # The project itself is written and valid - only the repo is missing,
-        # and `git init` is one command away. Failing the whole scaffold over
-        # it would throw away work that succeeded.
+        # The project is written and valid; only the repo is missing.
         typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
@@ -364,13 +362,8 @@ def auth_login(
         )
         raise typer.Exit(code=1)
 
-    # Read stdin before anything can prompt on it. `--with-token` is the
-    # non-interactive path and stdin *is* the token, so the "already logged
-    # in, log in again?" confirm below has no input left to consume but the
-    # token itself - which it did consume, rejecting it as invalid input and
-    # then aborting at EOF. `echo "$TOKEN" | foro auth login --with-token`
-    # could not re-authenticate a machine that was already logged in, which
-    # is the one situation CI is in every run after the first.
+    # Read stdin before anything can prompt on it - the confirm below would
+    # otherwise eat the token as its answer.
     token = _read_token_from_stdin() if with_token else None
 
     existing = _config.load(host)
@@ -411,9 +404,8 @@ def _read_token_from_stdin() -> str:
 
 
 def _open_browser(url: str) -> None:
-    """Best effort. `webbrowser.open` raises on a box with no browser at all,
-    and the URL is already on screen for exactly that case - losing the login
-    because the convenience step failed would be the wrong trade."""
+    """Best effort - it raises on a box with no browser, which is exactly
+    where the printed URL is the point."""
     try:
         webbrowser.open(url)
     except Exception:
@@ -435,12 +427,8 @@ def _run_device_flow(host: str) -> str:
             f"(or paste {grant.verification_uri_complete})"
         )
     else:
-        # No terminal to press Enter on, and nowhere to open a browser. The
-        # grant is still perfectly usable from another machine, so print the
-        # URL and start polling rather than dying - `input()` on a closed
-        # stdin raised EOFError straight through the handlers below and out
-        # as a traceback, which is what running this under nohup, in a
-        # container, or from an agent used to look like.
+        # No terminal to press Enter on. The grant still works from any
+        # browser, so print the URL and poll rather than dying on EOFError.
         typer.echo(f"Open this to authorize: {grant.verification_uri_complete}")
     try:
         if interactive:

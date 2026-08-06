@@ -70,11 +70,8 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
                 "unlocked install. Run `uv lock`."
             )
         else:
-            # A lockfile check needs `uv` on this machine, but nothing else
-            # here does - so a missing uv downgrades this one rule to a
-            # warning instead of failing a repo that may well be fine. Saying
-            # "not checked" is honest; claiming the repo passed a check that
-            # never ran is not.
+            # Only this rule needs uv, so a missing uv downgrades it to a
+            # warning rather than failing a repo that is probably fine.
             try:
                 in_sync = _uv_lock_in_sync(build_dir)
             except MissingToolError as err:

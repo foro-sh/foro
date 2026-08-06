@@ -308,15 +308,11 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
     must pass check - holds without a manual step), README.md, .gitignore,
     .env.example, and tests/.
 
-    All or nothing. `uv lock` runs last and can fail - no uv installed, or an
-    unresolvable dependency set - and it used to leave every other file behind
-    on the way out, so `foro init` reported failure while creating a directory
-    that then blocked the retry ("already exists and is not empty"). Anything
-    written here is removed again if the lock step doesn't finish.
+    All or nothing: `uv lock` runs last and can fail, and the leftovers used
+    to block the retry with "already exists and is not empty".
     """
-    # Only remove what this call created. `foro init <name>` guarantees an
-    # empty or absent target, but scaffold_new is callable on its own and
-    # must not take a user's directory with it.
+    # Only remove what this call created - scaffold_new is callable on its
+    # own and must not take a user's directory with it.
     created_root = not dir_path.exists()
     written: list[Path] = []
 
@@ -372,8 +368,7 @@ def _remove_scaffold(dir_path: Path, written: list[Path], created_root: bool) ->
     if created_root:
         shutil.rmtree(dir_path, ignore_errors=True)
         return
-    # The target pre-existed, so take back only what was written - plus the
-    # two directories, which are ours and are empty again by now.
+    # Take back only what was written, plus our two now-empty directories.
     for path in written:
         path.unlink(missing_ok=True)
     for name in ("tools", "tests"):

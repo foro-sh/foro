@@ -128,9 +128,7 @@ def test_run_does_not_override_an_explicit_banner_preference(monkeypatch):
 
 def test_an_explicit_port_is_not_mistaken_for_no_port(monkeypatch):
     """`port or ...` read an explicit 0 as "not given" and fell through to
-    $MCP_PORT, so the caller's argument vanished without a word. 0 is not a
-    port foro.sh can health-check either - it binds whatever the OS hands
-    out, and the probe checks the port the manifest declared."""
+    $MCP_PORT, so the caller's argument vanished without a word."""
     monkeypatch.setenv("MCP_PORT", "9001")
 
     with pytest.raises(ValueError, match="between 1 and 65535"):
@@ -146,8 +144,7 @@ def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
 
 
 def test_a_non_numeric_mcp_port_names_the_variable(monkeypatch):
-    """It used to surface as `invalid literal for int() with base 10` - which
-    names neither MCP_PORT nor the server it stopped from starting."""
+    """It used to surface as `invalid literal for int() with base 10`."""
     monkeypatch.setenv("MCP_PORT", "eight thousand")
 
     with pytest.raises(ValueError, match="MCP_PORT is not a number"):

@@ -119,10 +119,8 @@ def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_s
 
 
 def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
-    """The human is sent to the browser before this loop starts, so by the
-    time it runs the approval is often already in. Sleeping before the first
-    request made that common case wait out a full interval for a token the
-    server was holding the whole time."""
+    """The human is sent to the browser before this loop starts, so the
+    approval is often already in when it runs."""
     host, handler = server
     handler.script = [(200, {"access_token": "foro_pat_abc"})]
 
@@ -133,8 +131,7 @@ def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
 
 
 def test_a_zero_interval_from_the_server_does_not_become_a_busy_loop(server, no_sleeping):
-    """`float(sent) if sent else ...` read 0 as absent for the slow_down case
-    and as a cadence for the grant's own - neither is a number to poll on."""
+    """0 is not a number to poll on, in either position."""
     host, handler = server
     handler.script = [
         (400, {"error": "authorization_pending"}),
@@ -316,10 +313,8 @@ def test_saving_never_leaves_the_file_group_or_world_readable():
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
 def test_saving_narrows_a_file_that_was_already_too_open():
-    """The case the test above cannot see: os.open's mode argument applies
-    only when it creates the file, so a hosts.yml that already existed as
-    0644 - restored dotfiles, a bad umask under an older version, a file a
-    user made by hand - kept that mode and took the token anyway."""
+    """The case the test above cannot see: os.open's mode applies only on
+    create, so an existing 0644 hosts.yml kept it and took the token."""
     path = _config.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{}\n")
@@ -333,11 +328,8 @@ def test_saving_narrows_a_file_that_was_already_too_open():
 
 # --- malformed responses --------------------------------------------------
 #
-# A 2xx is not a promise about the body. A captive portal, a proxy error page,
-# or a plain misrouted request all answer with something that is not the shape
-# expected here, and _api's decoder hands back a string when the body was not
-# JSON at all. Indexing that raised KeyError/TypeError/AttributeError out of
-# the auth module and reached the user as a traceback naming a dict key.
+# A 2xx is not a promise about the body. Indexing one that isn't the expected
+# shape raised KeyError/TypeError out of the auth module as a traceback.
 
 
 def test_a_non_object_device_code_response_is_reported_not_indexed(server):
@@ -357,8 +349,7 @@ def test_a_device_code_response_missing_a_field_names_the_field(server):
 
 
 def test_an_omitted_interval_is_the_rfc_default_not_an_error(server):
-    """RFC 8628 §3.2 makes `interval` optional and defaults it to 5, so a
-    server that leaves it out is answering correctly."""
+    """RFC 8628 §3.2 makes `interval` optional with a default of 5."""
     host, handler = server
     handler.script = [
         (200, {
@@ -376,7 +367,7 @@ def test_an_omitted_interval_is_the_rfc_default_not_an_error(server):
 
 
 def test_an_approval_without_a_token_is_an_error_not_a_keyerror(server, no_sleeping):
-    """cli.py did `payload["access_token"]` on whatever came back."""
+    """cli.py indexed `access_token` on whatever came back."""
     host, handler = server
     handler.script = [(200, {"token_type": "bearer"})]
 
@@ -408,9 +399,8 @@ def test_revoke_reports_a_token_list_that_is_not_a_list(server):
 
 
 def test_revoke_refuses_a_token_without_the_foro_prefix():
-    """The prefix slice assumed the prefix was there. On any other shape it
-    yields the wrong eight characters, and the match that follows finds
-    nothing - or, worse, somebody else's row."""
+    """The slice assumed the prefix was there; another shape yields the
+    wrong eight characters and matches nothing, or somebody else's row."""
     with pytest.raises(auth.AuthError, match="does not look like a foro token"):
         auth.revoke("foro.sh", "ghp_something_else_entirely")
 

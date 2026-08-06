@@ -26,10 +26,8 @@ def test_run_dev_succeeds_against_a_real_foro_run_server():
 
 
 def test_run_dev_raises_on_stdio_only_server():
-    """The footgun this whole command exists to catch. It surfaces as an
-    immediate exit rather than a hang: foro dev gives the child DEVNULL for
-    stdin, so a stdio server reads EOF and stops. Either way the answer is
-    the same, which is why the hint is on both messages."""
+    """The footgun this command exists to catch. It surfaces as an immediate
+    exit, not a hang - the child gets DEVNULL for stdin."""
     with pytest.raises(DevError, match="foro.run"):
         run_dev(FIXTURES / "stdio-only", timeout=5)
 
@@ -46,8 +44,7 @@ def _dead_on_arrival(tmp_path, port, exit_code=3):
 
 
 def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
-    """It used to poll the port for the whole timeout regardless - a server
-    that exited in half a second still cost the full 60 seconds."""
+    """It used to poll the full timeout regardless."""
     started = time.monotonic()
 
     with pytest.raises(DevError, match="exited with status 3"):
@@ -57,8 +54,7 @@ def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
 
 
 def test_a_dead_server_reports_its_exit_status(tmp_path):
-    """The old message said only "never opened port" and asked about stdio.
-    It never mentioned that the process had exited, or with what."""
+    """The old message never mentioned the process had exited, or with what."""
     with pytest.raises(DevError) as exc_info:
         run_dev(_dead_on_arrival(tmp_path, 8138), timeout=30)
 
@@ -67,11 +63,8 @@ def test_a_dead_server_reports_its_exit_status(tmp_path):
 
 
 def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
-    """The TCP probe cannot tell whose listener it found. With an unrelated
-    process on the same port - a stale foro dev, another project on 8000 -
-    connecting succeeded and dev reported a healthy server while the one it
-    started was already dead. Refusing the port up front is what makes the
-    probe's answer mean something afterwards."""
+    """The probe cannot tell whose listener it found, so a squatter read as
+    a healthy server. Refusing the port up front is what fixes that."""
     squatter = socket.socket()
     squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     squatter.bind(("127.0.0.1", 0))

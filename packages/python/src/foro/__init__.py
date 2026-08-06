@@ -56,11 +56,7 @@ def _accepts_show_banner(run_method) -> bool:
 def _resolve_port(port: int | None) -> int:
     """The port to bind, from the explicit argument or $MCP_PORT.
 
-    `port or ...` treated an explicit 0 as "not given" and silently fell
-    through to the environment. It also let a non-numeric $MCP_PORT surface as
-    a bare `invalid literal for int()`, which names neither the variable nor
-    the server it stopped from starting. Both end up as a server on a port
-    nobody asked for, or no server at all, at deploy time.
+    Resolved on `is None`: `port or ...` read an explicit 0 as "not given".
     """
     if port is None:
         raw = os.environ.get("MCP_PORT", "8000")
@@ -69,10 +65,9 @@ def _resolve_port(port: int | None) -> int:
         except ValueError:
             raise ValueError(f"MCP_PORT is not a number: {raw!r}") from None
 
+    # 0 binds whatever the OS hands out, but the health probe checks the port
+    # the manifest declared - a random one fails the deploy confusingly.
     if not 1 <= port <= 65535:
-        # 0 would bind whatever the OS handed out. foro.sh's health probe
-        # checks the port the manifest declared, so a random one fails the
-        # deploy in a way that looks like the server never started.
         raise ValueError(f"port must be between 1 and 65535, got {port}")
     return port
 

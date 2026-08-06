@@ -68,13 +68,9 @@ def is_valid_repo_path(p: str) -> bool:
     interpolates into a Dockerfile or shell call: `manifest_path`,
     `entrypoint`, `build_path`.
 
-    The leading-`-` rule closes what #605's segment regex left open. `-` is
-    inside the allowed character class, so `--isolated` and `-rf` validated as
-    paths, and a path is not always read as one: `foro dev` runs
-    `uv run <entrypoint>`, where an entrypoint that starts with a dash is an
-    option to uv rather than a file. Same shape wherever these land in an
-    argv or a shell word. No real file is spelled this way, and one that is
-    can still be reached as `./-x.py`.
+    The leading-`-` rule closes what #605 left open: `-` is inside the
+    allowed class, so `--isolated` validated as a path and then read as an
+    option to `uv run`. A real file spelled that way is still `./-x.py`.
 
     `fullmatch`, not `match`: without it, Python's `$` matches just before a
     trailing newline at the end of the string (unlike JavaScript's, which is
