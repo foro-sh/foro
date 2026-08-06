@@ -332,7 +332,9 @@ def auth_login(
     with_token: bool = typer.Option(
         False,
         "--with-token",
-        help="Read a token from stdin instead of running the device flow, for CI.",
+        help="Read a token from stdin instead of running the device flow, for CI. "
+        "Implies --force: stdin is the token, so there is nothing left to answer "
+        "a confirmation prompt with.",
     ),
     force: bool = typer.Option(False, "--force", "-f", help="Replace an existing login without asking."),
 ) -> None:
@@ -346,25 +348,22 @@ def auth_login(
         )
         raise typer.Exit(code=1)
 
+    # Read stdin before anything can prompt on it. `--with-token` is the
+    # non-interactive path and stdin *is* the token, so the "already logged
+    # in, log in again?" confirm below has no input left to consume but the
+    # token itself - which it did consume, rejecting it as invalid input and
+    # then aborting at EOF. `echo "$TOKEN" | foro auth login --with-token`
+    # could not re-authenticate a machine that was already logged in, which
+    # is the one situation CI is in every run after the first.
+    token = _read_token_from_stdin() if with_token else None
+
     existing = _config.load(host)
-    if existing and not force:
+    if existing and not force and not with_token:
         who = f" as {existing.user}" if existing.user else ""
         if not typer.confirm(f"Already logged in to {host}{who}. Log in again?", default=False):
             raise typer.Exit(code=1)
 
-    if with_token:
-        token = sys.stdin.read().strip()
-        if not token:
-            typer.secho("✗ no token on stdin", fg=typer.colors.RED)
-            raise typer.Exit(code=1)
-        if not TOKEN_RE.match(token):
-            typer.secho(
-                f"✗ that is not a foro token - expected {TOKEN_PREFIX} "
-                "followed by 43 characters",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(code=1)
-    else:
+    if token is None:
         token = _run_device_flow(host)
 
     try:
@@ -379,6 +378,20 @@ def auth_login(
     )
     workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
+
+
+def _read_token_from_stdin() -> str:
+    token = sys.stdin.read().strip()
+    if not token:
+        typer.secho("✗ no token on stdin", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if not TOKEN_RE.match(token):
+        typer.secho(
+            f"✗ that is not a foro token - expected {TOKEN_PREFIX} followed by 43 characters",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    return token
 
 
 def _run_device_flow(host: str) -> str:
