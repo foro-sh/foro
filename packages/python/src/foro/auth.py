@@ -32,6 +32,8 @@ TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}[A-Za-z0-9_-]{{43}}$")
 # Fallback widening step, used only when a `slow_down` body arrives without an
 # `interval` of its own. The server normally sends the cadence it is enforcing.
 SLOW_DOWN_STEP = 5.0
+# RFC 8628 §3.2's default, used when the grant's own interval is unusable.
+DEFAULT_INTERVAL = 5.0
 
 
 class AuthError(Exception):
@@ -74,18 +76,18 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
     `on_wait(elapsed)` is called before each sleep so the caller can render
     progress - this loop owns the timing, not the display.
     """
-    interval = float(grant.interval)
+    # A server that sends 0 or a negative cadence would otherwise turn this
+    # into a busy loop against its own token endpoint. RFC 8628's default is
+    # the floor when the number it sent is not one we can poll on.
+    interval = float(grant.interval) if grant.interval > 0 else DEFAULT_INTERVAL
     started = time.monotonic()
     deadline = started + grant.expires_in
 
     while True:
-        if on_wait:
-            on_wait(time.monotonic() - started)
-        time.sleep(interval)
-
-        if time.monotonic() >= deadline:
-            raise AuthError("the code expired before it was authorized - run `foro auth login` again")
-
+        # Ask first, sleep after. Sleeping first meant an approval that had
+        # already happened - the common case, since the human is sent to the
+        # browser before this loop starts - still waited out a full interval
+        # before anyone asked the server about it.
         try:
             return _api.request(
                 "POST",
@@ -95,23 +97,38 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
             )
         except ApiError as err:
             code = err.code
-            if code == "authorization_pending":
-                continue
             if code == "slow_down":
                 # The server widens its own stored interval and returns it, so
                 # poll on that rather than on a locally-guessed number - a
                 # guess that lands under what the server now enforces just
                 # trips `slow_down` again.
-                sent = err.payload.get("interval") if isinstance(err.payload, dict) else None
-                interval = float(sent) if sent else interval + SLOW_DOWN_STEP
-                continue
-            if code == "expired_token":
+                interval = _widened(err.payload, interval)
+            elif code == "expired_token":
                 raise AuthError(
                     "the code expired before it was authorized - run `foro auth login` again"
                 ) from None
-            if code == "access_denied":
+            elif code == "access_denied":
                 raise AuthError("authorization was denied in the browser") from None
-            raise
+            elif code != "authorization_pending":
+                raise
+
+        if time.monotonic() >= deadline:
+            raise AuthError("the code expired before it was authorized - run `foro auth login` again")
+
+        if on_wait:
+            on_wait(time.monotonic() - started)
+        time.sleep(interval)
+
+
+def _widened(payload, current: float) -> float:
+    """The interval to adopt after a `slow_down`. Anything the server didn't
+    send as a usable positive number falls back to widening locally - taking a
+    0 at face value would busy-loop on the endpoint that just asked us to slow
+    down, which is the opposite of what it asked for."""
+    sent = payload.get("interval") if isinstance(payload, dict) else None
+    if isinstance(sent, bool) or not isinstance(sent, (int, float)) or sent <= 0:
+        return current + SLOW_DOWN_STEP
+    return float(sent)
 
 
 def fetch_identity(host: str, token: str) -> Identity:

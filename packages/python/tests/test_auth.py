@@ -101,8 +101,9 @@ def test_slow_down_adopts_the_interval_the_server_sends(server, no_sleeping):
     auth.poll_for_token(host, _grant(interval=5))
 
     # 12, not 5 + SLOW_DOWN_STEP: the server is enforcing its own cadence and
-    # says which one, so a local guess is not the number to poll on.
-    assert no_sleeping == [5.0, 12.0]
+    # says which one, so a local guess is not the number to poll on. One
+    # sleep, not two - the first request goes out before any waiting.
+    assert no_sleeping == [12.0]
 
 
 def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_sleeping):
@@ -114,7 +115,37 @@ def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_s
 
     auth.poll_for_token(host, _grant(interval=5))
 
-    assert no_sleeping == [5.0, 5.0 + auth.SLOW_DOWN_STEP]
+    assert no_sleeping == [5.0 + auth.SLOW_DOWN_STEP]
+
+
+def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
+    """The human is sent to the browser before this loop starts, so by the
+    time it runs the approval is often already in. Sleeping before the first
+    request made that common case wait out a full interval for a token the
+    server was holding the whole time."""
+    host, handler = server
+    handler.script = [(200, {"access_token": "foro_pat_abc"})]
+
+    payload = auth.poll_for_token(host, _grant(interval=5))
+
+    assert payload["access_token"] == "foro_pat_abc"
+    assert no_sleeping == []
+
+
+def test_a_zero_interval_from_the_server_does_not_become_a_busy_loop(server, no_sleeping):
+    """`float(sent) if sent else ...` read 0 as absent for the slow_down case
+    and as a cadence for the grant's own - neither is a number to poll on."""
+    host, handler = server
+    handler.script = [
+        (400, {"error": "authorization_pending"}),
+        (400, {"error": "slow_down", "interval": 0}),
+        (200, {"access_token": "foro_pat_abc"}),
+    ]
+
+    auth.poll_for_token(host, _grant(interval=0))
+
+    assert no_sleeping == [auth.DEFAULT_INTERVAL, auth.DEFAULT_INTERVAL + auth.SLOW_DOWN_STEP]
+    assert all(slept > 0 for slept in no_sleeping)
 
 
 def test_denied_is_reported_as_denial_not_as_a_network_error(server):
