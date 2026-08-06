@@ -105,11 +105,17 @@ def _uv_lock_in_sync(build_dir: Path) -> bool:
     return _run(["uv", "lock", "--check"], cwd=build_dir).returncode == 0
 
 
-# Directories never worth descending into when scanning for the wrong
-# import - installed packages' own source can contain the literal marker
-# string too (e.g. inside `mcp`/`fastmcp` themselves), which would be a
-# false positive, not the user's code.
-_SCAN_EXCLUDE_DIRS = {".venv", "__pycache__", ".git"}
+# Vendored or installed source carries the marker string itself (inside
+# `mcp`/`fastmcp`, or a test asserting on it), and a hit there is a false
+# positive, not the user's code. Any dot-directory is skipped too, which
+# covers .venv, .tox, .git and whatever the next tool invents.
+_SCAN_EXCLUDE_DIRS = {"__pycache__", "node_modules", "site-packages", "venv", "env", "tests"}
+
+
+def _is_scannable(relative: Path) -> bool:
+    return not any(
+        part in _SCAN_EXCLUDE_DIRS or part.startswith(".") for part in relative.parts[:-1]
+    )
 
 
 def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
@@ -119,7 +125,7 @@ def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
     .py file under build_dir (not just the entrypoint) is what keeps this
     check meaningful for that structure instead of going blind."""
     for path in sorted(build_dir.rglob("*.py")):
-        if any(part in _SCAN_EXCLUDE_DIRS for part in path.relative_to(build_dir).parts):
+        if not _is_scannable(path.relative_to(build_dir)):
             continue
         try:
             text = path.read_text()
