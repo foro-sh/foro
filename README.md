@@ -14,6 +14,7 @@ deployable in the first place.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Quickstart](#quickstart) ·
+[Claude Code Plugin](#claude-code-plugin) ·
 [Packages](#packages) ·
 [Example](#example) ·
 [Contributing](#contributing)
@@ -59,6 +60,23 @@ git init && git add -A && git commit -m "init" && gh repo create --push
 See [`packages/python/README.md`](packages/python/README.md) for the full CLI
 reference, the runtime API, and how secrets flow from the dashboard into your
 server's environment.
+
+## Claude Code Plugin
+
+Building the server in [Claude Code](https://claude.com/claude-code)? Install
+the `foro` plugin instead of scaffolding by hand — it bundles the foro.sh docs
+MCP server plus skills that take a repo from empty folder to deployed:
+
+```
+/plugin marketplace add foro-sh/foro
+/plugin install foro
+```
+
+That gives you `/foro:create-foro-project`, `/foro:add-foro-to-existing-server`,
+`/foro:deploy-to-foro`, and `/foro:design-mcp-tools`. See
+[`plugins/claude-code/README.md`](plugins/claude-code/README.md) for what each
+one does — there's also a [Codex counterpart](plugins/codex) with the same
+skills.
 
 ## Packages
 
