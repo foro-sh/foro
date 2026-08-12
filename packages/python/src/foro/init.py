@@ -28,7 +28,7 @@ from pathlib import Path
 
 import yaml as pyyaml
 
-from foro._manifest import DEFAULT_PORT, DEFAULT_PYTHON_VERSION
+from foro._manifest import DEFAULT_PORT, DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS
 from foro._proc import MissingToolError
 from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
@@ -43,7 +43,8 @@ ENTRYPOINT_CANDIDATES = ["server.py", "main.py", "src/server.py", "app.py"]
 class ManifestFields:
     name: str
     entrypoint: str
-    python_version: str = DEFAULT_PYTHON_VERSION
+    runtime: str = DEFAULT_RUNTIME
+    runtime_version: str = DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME]
     port: int = DEFAULT_PORT
     dependency_manager: str | None = None
 
@@ -85,7 +86,7 @@ def detect_existing_dependency_manager(dir_path: Path) -> str | None:
 
 
 def manifest_yaml(fields: ManifestFields) -> str:
-    # name/entrypoint/python_version/port are always written explicitly,
+    # name/entrypoint/runtime/runtime_version/port are always written explicitly,
     # even when they match the schema's own default - a foro.yaml should be
     # legible on its own without the reader needing to know the implicit
     # defaults. dependency_manager stays conditional: unlike the others,
@@ -95,7 +96,8 @@ def manifest_yaml(fields: ManifestFields) -> str:
     doc: dict[str, object] = {
         "name": fields.name,
         "entrypoint": fields.entrypoint,
-        "python_version": fields.python_version,
+        "runtime": fields.runtime,
+        "runtime_version": fields.runtime_version,
         "port": fields.port,
     }
     if fields.dependency_manager:
@@ -337,7 +339,7 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         )
         write(
             dir_path / "pyproject.toml",
-            _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.python_version),
+            _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
         )
         write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
         write(dir_path / ".gitignore", _GITIGNORE_TEMPLATE)

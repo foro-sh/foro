@@ -16,11 +16,12 @@ from foro import _config
 from foro._api import ApiError
 from foro._manifest import (
     DEFAULT_PORT,
-    DEFAULT_PYTHON_VERSION,
+    DEFAULT_RUNTIME,
+    DEFAULT_RUNTIME_VERSIONS,
     MAX_PORT,
     MIN_PORT,
     NAME_RE,
-    PYTHON_VERSIONS,
+    RUNTIME_VERSIONS,
     SIDECAR_PORT,
     ManifestError,
     is_valid_repo_path,
@@ -142,12 +143,16 @@ def _prompt_entrypoint(default: str) -> str:
         )
 
 
-def _prompt_python_version(default: str) -> str:
+def _prompt_runtime_version(runtime: str, default: str) -> str:
+    # Versions are allowlisted per runtime, so the prompt is too. There is no
+    # runtime prompt yet: with one runtime, asking would be a question with a
+    # single valid answer.
+    versions = RUNTIME_VERSIONS[runtime]
     while True:
-        value = _prompt(f"Python version ({'/'.join(PYTHON_VERSIONS)})", default=default)
-        if value in PYTHON_VERSIONS:
+        value = _prompt(f"{runtime.capitalize()} version ({'/'.join(versions)})", default=default)
+        if value in versions:
             return value
-        typer.secho(f"Must be one of {', '.join(PYTHON_VERSIONS)}", fg=typer.colors.RED)
+        typer.secho(f"Must be one of {', '.join(versions)}", fg=typer.colors.RED)
 
 
 def _prompt_dependency_manager(default: str) -> str:
@@ -206,14 +211,14 @@ def _init_from_scratch(target: Path) -> None:
         raise typer.Exit(code=1)
 
     name = _prompt_name(_sanitize_name(target.name))
-    python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
+    runtime_version = _prompt_runtime_version(DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME])
     port = _prompt_port(DEFAULT_PORT)
     git_init = _confirm("Initialize a git repo here?", default=True)
 
     # Fixed, opinionated structure (app.py + tools/) - not a free-form
     # filename choice like existing-repo mode's entrypoint. See
     # scaffold_new's docstring.
-    fields = ManifestFields(name=name, entrypoint="server.py", python_version=python_version, port=port)
+    fields = ManifestFields(name=name, entrypoint="server.py", runtime_version=runtime_version, port=port)
     try:
         scaffold_new(target, fields, git_init=git_init)
     except ScaffoldError as err:
@@ -241,13 +246,13 @@ def _init_existing(dir_path: Path) -> None:
     dependency_manager = _prompt_dependency_manager(detected_manager or "uv")
 
     name = _prompt_name(_sanitize_name(dir_path.resolve().name))
-    python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
+    runtime_version = _prompt_runtime_version(DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME])
     port = _prompt_port(DEFAULT_PORT)
 
     fields = ManifestFields(
         name=name,
         entrypoint=entrypoint,
-        python_version=python_version,
+        runtime_version=runtime_version,
         port=port,
         # Only recorded as an explicit override when it differs from what
         # the platform would auto-detect anyway (or when nothing could be
