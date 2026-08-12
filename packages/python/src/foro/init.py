@@ -339,6 +339,9 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         )
         write(
             dir_path / "pyproject.toml",
+            # {python_version} is pyproject's own `requires-python`, not the
+            # manifest field - scaffold_new only ever writes Python projects,
+            # so the runtime's version is the right value to put there.
             _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
         )
         write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
