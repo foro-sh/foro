@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: npm
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
       # Node 22.14+ and npm 11.5.1+ are the floor for trusted publishing. Node
@@ -41,7 +41,7 @@ jobs:
       # no token in the environment that line still counts as configured auth,
       # so npm skips the OIDC exchange and the publish 404s. registry.npmjs.org
       # is the default registry anyway.
-      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - run: npm install -g npm@^11.5.1
