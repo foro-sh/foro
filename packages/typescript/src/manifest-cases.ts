@@ -26,10 +26,12 @@ export type ManifestRejectionReason =
   | 'invalid_name'
   | 'invalid_entrypoint'
   | 'invalid_build_path'
-  | 'invalid_python_version'
+  | 'invalid_runtime'
+  | 'invalid_runtime_version'
   | 'invalid_port'
   | 'invalid_dependency_manager'
   | 'unsupported_project'
+  | 'unknown_field'
 
 export interface ManifestCase {
   /** Stable identifier, unique across the table - use it as the test name. */
