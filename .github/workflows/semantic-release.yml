@@ -91,6 +91,17 @@ jobs:
       python: ${{ steps.changed.outputs.python }}
       typescript: ${{ steps.changed.outputs.typescript }}
     steps:
+      # main is protected: no direct pushes, even from GITHUB_TOKEN. The
+      # `foro-release` GitHub App is on the branch's push-restriction
+      # allowlist (id 4578870, foro-sh org), so its minted token is what lets
+      # @semantic-release/git push the version-bump/changelog commit below.
+      - name: Mint a release token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -151,10 +162,14 @@ jobs:
       # `published` and `version` are written by scripts/record-release.sh via
       # the exec plugin's successCmd - `npx semantic-release` is a plain shell
       # command and sets no outputs of its own.
+      #
+      # GITHUB_TOKEN here is the app-token step's output, not the default
+      # secrets.GITHUB_TOKEN - see the "Mint a release token" step above for
+      # why: the default token can't push past main's branch protection.
       - name: Release
         id: semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: npx semantic-release
 
       # The release commit is created and pushed by @semantic-release/git, so
