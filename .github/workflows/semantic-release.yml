@@ -117,18 +117,9 @@ jobs:
       # would report every package as changed on every single release.
       - name: Detect changed packages
         id: changed
-        env:
-          BEFORE: ${{ github.event.before }}
         run: |
-          if [ -z "$BEFORE" ] \
-            || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
-            || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            # First push to the branch, or a force-push that orphaned the old
-            # tip - neither leaves a usable range, so fall back to this commit.
-            base="HEAD~1"
-          else
-            base="$BEFORE"
-          fi
+          empty_tree="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+          base="$(git describe --tags --abbrev=0 2>/dev/null || echo "$empty_tree")"
 
           files="$(git diff --name-only "$base" HEAD)"
           echo "comparing ${base}..HEAD"
