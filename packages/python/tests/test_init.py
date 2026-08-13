@@ -63,12 +63,14 @@ def test_detect_dependency_manager_none_when_nothing_present(tmp_path):
 # --- manifest_yaml / write_manifest / existing_manifest_diff ------------
 
 
-def test_manifest_yaml_always_includes_name_entrypoint_python_version_port():
+def test_manifest_yaml_always_includes_name_entrypoint_runtime_port():
     fields = ManifestFields(name="x", entrypoint="server.py")
 
     text = manifest_yaml(fields)
 
-    assert text == "name: x\nentrypoint: server.py\npython_version: '3.12'\nport: 8000\n"
+    assert text == (
+        "name: x\nentrypoint: server.py\nruntime: python\nruntime_version: '3.12'\nport: 8000\n"
+    )
 
 
 def test_manifest_yaml_includes_dependency_manager_only_when_set():
@@ -77,10 +79,10 @@ def test_manifest_yaml_includes_dependency_manager_only_when_set():
 
     with_override = manifest_yaml(
         ManifestFields(
-            name="x", entrypoint="server.py", python_version="3.11", port=9000, dependency_manager="poetry"
+            name="x", entrypoint="server.py", runtime_version="3.11", port=9000, dependency_manager="poetry"
         )
     )
-    assert "python_version: '3.11'" in with_override
+    assert "runtime_version: '3.11'" in with_override
     assert "port: 9000" in with_override
     assert "dependency_manager: poetry" in with_override
 
@@ -112,7 +114,7 @@ def test_existing_manifest_diff_shows_changes(tmp_path):
 
 def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     target = tmp_path / "scaffolded"
-    fields = ManifestFields(name="scaffolded", entrypoint="server.py", python_version="3.12", port=8000)
+    fields = ManifestFields(name="scaffolded", entrypoint="server.py", runtime_version="3.12", port=8000)
 
     scaffold_new(target, fields, git_init=False)
 
@@ -173,7 +175,7 @@ def test_cli_init_from_scratch(tmp_path):
     result = runner.invoke(
         app,
         ["init", str(target)],
-        input="\n\n\nn\n",  # accept name/python_version/port defaults, decline git init
+        input="\n\n\nn\n",  # accept name/runtime_version/port defaults, decline git init
     )
 
     assert result.exit_code == 0, result.stdout

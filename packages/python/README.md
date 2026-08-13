@@ -142,7 +142,8 @@ Every deployable repo carries one, at its root:
 name: my-server          # required, ^[a-z0-9-]{3,48}$ - display name only, not the URL slug
 entrypoint: server.py    # required, relative path, run as `uv run <entrypoint>`
 build_path: .            # optional, default "." - dir holding pyproject.toml + uv.lock
-python_version: "3.12"   # optional, one of 3.11 / 3.12 / 3.13
+runtime: python          # optional, currently python only
+runtime_version: "3.12"  # optional, one of 3.11 / 3.12 / 3.13
 port: 8000               # optional, default 8000 - the port your server must listen on
 ```
 

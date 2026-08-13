@@ -3,7 +3,7 @@ import yaml
 from typer.testing import CliRunner
 
 from foro import _config
-from foro._manifest import DEFAULT_PORT, DEFAULT_PYTHON_VERSION
+from foro._manifest import DEFAULT_PORT, DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS
 from foro.cli import app
 
 runner = CliRunner()
@@ -47,7 +47,7 @@ def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.stdout
     manifest = (tmp_path / "foro.yaml").read_text()
     assert "entrypoint: server.py" in manifest
-    assert f"python_version: '{DEFAULT_PYTHON_VERSION}'" in manifest
+    assert f"runtime_version: '{DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME]}'" in manifest
     assert f"port: {DEFAULT_PORT}" in manifest
 
 

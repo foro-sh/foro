@@ -15,14 +15,14 @@
   },
   {
     "name": "all-fields",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: app\npython_version: \"3.11\"\nport: 9000\ndependency_manager: poetry\n",
+    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: app\nruntime: python\nruntime_version: \"3.11\"\nport: 9000\ndependency_manager: poetry\n",
     "expect": {
       "ok": true
     }
   },
   {
-    "name": "unquoted-python-version",
-    "yaml": "name: my-server\nentrypoint: server.py\npython_version: 3.12\n",
+    "name": "unquoted-runtime-version",
+    "yaml": "name: my-server\nentrypoint: server.py\nruntime_version: 3.12\n",
     "expect": {
       "ok": true
     }
@@ -116,11 +116,43 @@
     }
   },
   {
-    "name": "bad-python-version",
-    "yaml": "name: my-server\nentrypoint: server.py\npython_version: \"3.9\"\n",
+    "name": "bad-runtime-version",
+    "yaml": "name: my-server\nentrypoint: server.py\nruntime_version: \"3.9\"\n",
     "expect": {
       "ok": false,
-      "reason": "invalid_python_version"
+      "reason": "invalid_runtime_version"
+    }
+  },
+  {
+    "name": "bad-runtime",
+    "yaml": "name: my-server\nentrypoint: server.py\nruntime: node\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_runtime"
+    }
+  },
+  {
+    "name": "runtime-version-from-another-runtime",
+    "yaml": "name: my-server\nentrypoint: server.py\nruntime: python\nruntime_version: \"22\"\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_runtime_version"
+    }
+  },
+  {
+    "name": "unknown-field-stale-python-version",
+    "yaml": "name: my-server\nentrypoint: server.py\npython_version: \"3.13\"\n",
+    "expect": {
+      "ok": false,
+      "reason": "unknown_field"
+    }
+  },
+  {
+    "name": "unknown-field-typo",
+    "yaml": "name: my-server\nentrypoint: server.py\nentrypoints: server.py\n",
+    "expect": {
+      "ok": false,
+      "reason": "unknown_field"
     }
   },
   {
