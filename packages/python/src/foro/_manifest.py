@@ -26,7 +26,18 @@ NAME_RE = re.compile(r"^[a-z0-9-]{3,48}$")
 # empty segment, which the `+` quantifier already rejects, so those don't need
 # a separate check.
 _PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-PYTHON_VERSIONS = ["3.11", "3.12", "3.13"]
+# Interpreter allowlist per runtime, and the single source of truth for which
+# runtimes exist at all (platform issue #715). A runtime reaches this table
+# only once the platform can build it, gate it, and health-check it end to
+# end - the entry is what makes it selectable.
+RUNTIME_VERSIONS: dict[str, list[str]] = {
+    "python": ["3.11", "3.12", "3.13"],
+}
+DEFAULT_RUNTIME_VERSIONS: dict[str, str] = {
+    "python": "3.12",
+}
+# Derived so it can't drift from the table it is validated against.
+RUNTIMES = list(RUNTIME_VERSIONS)
 MIN_PORT = 1024
 MAX_PORT = 65535
 # The platform's health sidecar always binds this port inside the container
@@ -35,8 +46,23 @@ MAX_PORT = 65535
 # Mirrors container-spec.ts's SIDECAR_PORT.
 SIDECAR_PORT = 8001
 
-DEFAULT_PYTHON_VERSION = "3.12"
+DEFAULT_RUNTIME = "python"
 DEFAULT_PORT = 8000
+
+# Every field a foro.yaml may carry. Anything else is a hard rejection: a key
+# the platform doesn't read is almost always a typo or a stale name, and
+# silently dropping it changes what the server runs on without saying so -
+# `python_version` (renamed to `runtime_version`) would otherwise quietly
+# downgrade a pinned interpreter to the default.
+KNOWN_FIELDS = {
+    "name",
+    "build_path",
+    "entrypoint",
+    "runtime",
+    "runtime_version",
+    "port",
+    "dependency_manager",
+}
 
 
 class ManifestError(Exception):
@@ -53,7 +79,8 @@ class ValidatedManifest:
     name: str
     build_path: str
     entrypoint: str
-    python_version: str
+    runtime: str
+    runtime_version: str
     port: int
     dependency_manager: str | None
 
@@ -121,6 +148,19 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
     if not isinstance(doc, dict):
         raise ManifestError("foro.yaml must be a mapping of fields", "invalid_shape")
 
+    # Unknown fields are rejected, not ignored - see KNOWN_FIELDS. Checked
+    # first so the error names the real problem rather than a downstream
+    # default.
+    unknown = [key for key in doc if key not in KNOWN_FIELDS]
+    if unknown:
+        plural = "s" if len(unknown) > 1 else ""
+        names = ", ".join(f"`{key}`" for key in unknown)
+        raise ManifestError(
+            f"foro.yaml has unknown field{plural} {names} - "
+            f"valid fields are {', '.join(sorted(KNOWN_FIELDS))}",
+            "unknown_field",
+        )
+
     # name - required
     name = doc.get("name")
     if not isinstance(name, str) or not NAME_RE.match(name):
@@ -149,18 +189,32 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
             )
         build_path = posixpath.normpath(posixpath.join(manifest_path, raw_build_path))
 
-    # python_version - optional allowlist. Accept an unquoted YAML number too
-    # (e.g. 3.12 parses as a float) by normalising to a string first.
-    python_version = DEFAULT_PYTHON_VERSION
-    if "python_version" in doc:
-        raw_version = doc["python_version"]
-        normalised = str(raw_version) if isinstance(raw_version, (int, float)) else raw_version
-        if not isinstance(normalised, str) or normalised not in PYTHON_VERSIONS:
+    # runtime - optional allowlist, and the discriminator runtime_version is
+    # judged against, so it has to be resolved first.
+    runtime = DEFAULT_RUNTIME
+    if "runtime" in doc:
+        raw_runtime = doc["runtime"]
+        if not isinstance(raw_runtime, str) or raw_runtime not in RUNTIMES:
             raise ManifestError(
-                f"foro.yaml `python_version` must be one of {', '.join(PYTHON_VERSIONS)}",
-                "invalid_python_version",
+                f"foro.yaml `runtime` must be one of {', '.join(RUNTIMES)}",
+                "invalid_runtime",
             )
-        python_version = normalised
+        runtime = raw_runtime
+
+    # runtime_version - optional allowlist, per runtime. Accept an unquoted
+    # YAML number too (e.g. 3.12 parses as a float) by normalising first.
+    versions = RUNTIME_VERSIONS[runtime]
+    runtime_version = DEFAULT_RUNTIME_VERSIONS[runtime]
+    if "runtime_version" in doc:
+        raw_version = doc["runtime_version"]
+        normalised = str(raw_version) if isinstance(raw_version, (int, float)) else raw_version
+        if not isinstance(normalised, str) or normalised not in versions:
+            raise ManifestError(
+                f"foro.yaml `runtime_version` must be one of {', '.join(versions)} "
+                f"for runtime `{runtime}`",
+                "invalid_runtime_version",
+            )
+        runtime_version = normalised
 
     # port - optional, 1024-65535, excluding SIDECAR_PORT.
     port = DEFAULT_PORT
@@ -198,7 +252,8 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
         name=name,
         build_path=build_path,
         entrypoint=entrypoint,
-        python_version=python_version,
+        runtime=runtime,
+        runtime_version=runtime_version,
         port=port,
         dependency_manager=dependency_manager,
     )

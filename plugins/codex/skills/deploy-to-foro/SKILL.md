@@ -73,7 +73,7 @@ foro.sh splits logs into two streams — check the right one:
 
 - **Build log** — raw `docker build` output. Look here for dependency/lockfile
   problems: a stale lockfile, a package that won't install, a bad
-  `python_version`.
+  `runtime` and `runtime_version`.
 - **Deploy log** — the orchestration narrative: clone, `foro.yaml` validation,
   container start, health check, and the failure reason. Look here for a wrong
   `entrypoint`, a server not listening on `0.0.0.0:$MCP_PORT`, or a health
