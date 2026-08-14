@@ -1,3 +1,5 @@
+## [0.11.0](https://github.com/foro-sh/foro/compare/v0.10.1...v0.11.0) (2026-08-14)
+
 ## [0.10.1](https://github.com/foro-sh/foro/compare/v0.10.0...v0.10.1) (2026-08-13)
 
 ## [0.10.0](https://github.com/foro-sh/foro/compare/v0.9.3...v0.10.0) (2026-08-13)
