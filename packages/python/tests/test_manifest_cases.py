@@ -22,7 +22,13 @@ CASES = json.loads(resources.files("foro").joinpath("manifest-cases.json").read_
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
 def test_manifest_case(case, tmp_path):
-    (tmp_path / "foro.yaml").write_text(case["yaml"])
+    # Entry-file inference reads the directory, so a case declares whatever
+    # has to be on disk - the config file plus, where it matters, the file the
+    # config points at.
+    for name, contents in case["files"].items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
     expect = case["expect"]
 
     if expect["ok"]:

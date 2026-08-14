@@ -32,7 +32,7 @@ FLAVORS = [FakeStandaloneFastMCP, FakeMCPServerFastMCP, FakeLowLevelServer]
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
 def test_run_defaults_to_port_8000_without_mcp_port(server_cls, monkeypatch):
-    monkeypatch.delenv("MCP_PORT", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
     server = server_cls()
 
     run(server)
@@ -46,7 +46,7 @@ def test_run_defaults_to_port_8000_without_mcp_port(server_cls, monkeypatch):
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
 def test_run_reads_port_from_mcp_port_env(server_cls, monkeypatch):
-    monkeypatch.setenv("MCP_PORT", "9001")
+    monkeypatch.setenv("PORT", "9001")
     server = server_cls()
 
     run(server)
@@ -59,7 +59,7 @@ def test_run_reads_port_from_mcp_port_env(server_cls, monkeypatch):
 
 
 def test_run_explicit_port_overrides_env(monkeypatch):
-    monkeypatch.setenv("MCP_PORT", "9001")
+    monkeypatch.setenv("PORT", "9001")
     server = FakeStandaloneFastMCP()
 
     run(server, port=1234)
@@ -128,8 +128,8 @@ def test_run_does_not_override_an_explicit_banner_preference(monkeypatch):
 
 def test_an_explicit_port_is_not_mistaken_for_no_port(monkeypatch):
     """`port or ...` read an explicit 0 as "not given" and fell through to
-    $MCP_PORT, so the caller's argument vanished without a word."""
-    monkeypatch.setenv("MCP_PORT", "9001")
+    $PORT, so the caller's argument vanished without a word."""
+    monkeypatch.setenv("PORT", "9001")
 
     with pytest.raises(ValueError, match="between 1 and 65535"):
         run(FakeStandaloneFastMCP(), port=0)
@@ -137,7 +137,7 @@ def test_an_explicit_port_is_not_mistaken_for_no_port(monkeypatch):
 
 @pytest.mark.parametrize("bad", [-1, 65536])
 def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
-    monkeypatch.delenv("MCP_PORT", raising=False)
+    monkeypatch.delenv("PORT", raising=False)
 
     with pytest.raises(ValueError, match="between 1 and 65535"):
         run(FakeStandaloneFastMCP(), port=bad)
@@ -145,7 +145,7 @@ def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
 
 def test_a_non_numeric_mcp_port_names_the_variable(monkeypatch):
     """It used to surface as `invalid literal for int() with base 10`."""
-    monkeypatch.setenv("MCP_PORT", "eight thousand")
+    monkeypatch.setenv("PORT", "eight thousand")
 
-    with pytest.raises(ValueError, match="MCP_PORT is not a number"):
+    with pytest.raises(ValueError, match="PORT is not a number"):
         run(FakeStandaloneFastMCP())

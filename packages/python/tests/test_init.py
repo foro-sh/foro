@@ -7,12 +7,13 @@ from foro.check import run_check
 from foro.cli import app
 from foro.init import (
     ManifestFields,
+    MissingPyprojectError,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
-    existing_manifest_diff,
-    manifest_yaml,
+    existing_foro_table_diff,
+    foro_table,
     scaffold_new,
-    write_manifest,
+    write_foro_table,
 )
 
 runner = CliRunner()
@@ -60,53 +61,96 @@ def test_detect_dependency_manager_none_when_nothing_present(tmp_path):
     assert detect_existing_dependency_manager(tmp_path) is None
 
 
-# --- manifest_yaml / write_manifest / existing_manifest_diff ------------
+# --- foro_table / write_foro_table / existing_foro_table_diff -----------
 
 
-def test_manifest_yaml_always_includes_name_entrypoint_runtime_port():
-    fields = ManifestFields(name="x", entrypoint="server.py")
-
-    text = manifest_yaml(fields)
-
-    assert text == (
-        "name: x\nentrypoint: server.py\nruntime: python\nruntime_version: '3.12'\nport: 8000\n"
-    )
+def _pyproject(tmp_path, extra=""):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n' + extra)
+    return tmp_path
 
 
-def test_manifest_yaml_includes_dependency_manager_only_when_set():
-    without_override = manifest_yaml(ManifestFields(name="x", entrypoint="server.py"))
-    assert "dependency_manager" not in without_override
+def test_foro_table_is_none_when_inference_covers_every_answer():
+    assert foro_table(ManifestFields(name="x", entrypoint="server.py")) is None
 
-    with_override = manifest_yaml(
+
+def test_foro_table_records_only_what_inference_cannot_reach():
+    table = foro_table(
         ManifestFields(
-            name="x", entrypoint="server.py", runtime_version="3.11", port=9000, dependency_manager="poetry"
+            name="x",
+            entrypoint="cmd/serve.py",
+            runtime_version="3.11",
+            port=9000,
+            dependency_manager="poetry",
         )
     )
-    assert "runtime_version: '3.11'" in with_override
-    assert "port: 9000" in with_override
-    assert "dependency_manager: poetry" in with_override
+
+    assert table == (
+        "[tool.foro]\n"
+        'entrypoint = "cmd/serve.py"\n'
+        'runtime_version = "3.11"\n'
+        "port = 9000\n"
+        'dependency_manager = "poetry"\n'
+    )
 
 
-def test_existing_manifest_diff_none_when_no_file(tmp_path):
-    fields = ManifestFields(name="x", entrypoint="server.py")
+def test_write_foro_table_appends_to_the_existing_pyproject(tmp_path):
+    _pyproject(tmp_path)
 
-    assert existing_manifest_diff(tmp_path, fields) is None
+    assert write_foro_table(tmp_path, ManifestFields(name="x", entrypoint="server.py", port=9000))
 
-
-def test_existing_manifest_diff_empty_when_identical(tmp_path):
-    fields = ManifestFields(name="x", entrypoint="server.py")
-    write_manifest(tmp_path, fields)
-
-    assert existing_manifest_diff(tmp_path, fields) == ""
+    text = (tmp_path / "pyproject.toml").read_text()
+    assert text.startswith('[project]\nname = "x"\n')
+    assert "[tool.foro]\nport = 9000\n" in text
 
 
-def test_existing_manifest_diff_shows_changes(tmp_path):
-    write_manifest(tmp_path, ManifestFields(name="old", entrypoint="server.py"))
+def test_write_foro_table_writes_nothing_when_there_is_nothing_to_say(tmp_path):
+    _pyproject(tmp_path)
 
-    diff = existing_manifest_diff(tmp_path, ManifestFields(name="new", entrypoint="server.py"))
+    assert not write_foro_table(tmp_path, ManifestFields(name="x", entrypoint="server.py"))
+    assert "[tool.foro]" not in (tmp_path / "pyproject.toml").read_text()
 
-    assert "-name: old" in diff
-    assert "+name: new" in diff
+
+def test_write_foro_table_replaces_a_table_that_is_already_there(tmp_path):
+    _pyproject(tmp_path, "\n[tool.foro]\nport = 9000\n\n[tool.ruff]\nline-length = 100\n")
+
+    write_foro_table(tmp_path, ManifestFields(name="x", entrypoint="server.py", port=9100))
+
+    text = (tmp_path / "pyproject.toml").read_text()
+    assert "port = 9100" in text
+    assert "port = 9000" not in text
+    # The table it sits between is left exactly where it was.
+    assert "[tool.ruff]\nline-length = 100\n" in text
+
+
+def test_write_foro_table_drops_a_table_that_no_longer_says_anything(tmp_path):
+    _pyproject(tmp_path, "\n[tool.foro]\nport = 9000\n")
+
+    assert write_foro_table(tmp_path, ManifestFields(name="x", entrypoint="server.py"))
+    assert "[tool.foro]" not in (tmp_path / "pyproject.toml").read_text()
+
+
+def test_write_foro_table_needs_a_pyproject_to_write_into(tmp_path):
+    import pytest
+
+    with pytest.raises(MissingPyprojectError):
+        write_foro_table(tmp_path, ManifestFields(name="x", entrypoint="cmd/serve.py"))
+
+
+def test_existing_foro_table_diff_none_when_there_is_no_table(tmp_path):
+    _pyproject(tmp_path)
+
+    assert existing_foro_table_diff(tmp_path, ManifestFields(name="x", entrypoint="server.py")) is None
+
+
+def test_existing_foro_table_diff_shows_changes(tmp_path):
+    _pyproject(tmp_path, "\n[tool.foro]\nport = 9000\n")
+
+    diff = existing_foro_table_diff(
+        tmp_path, ManifestFields(name="x", entrypoint="server.py", port=9100)
+    )
+
+    assert "-port = 9000" in diff
+    assert "+port = 9100" in diff
 
 
 # --- scaffold_new ---------------------------------------------------------
@@ -124,7 +168,8 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "tools" / "add.py").exists()
     assert (target / "tests" / "test_tools.py").exists()
     assert (target / "pyproject.toml").exists()
-    assert (target / "foro.yaml").exists()
+    # A scaffold is the shape inference expects, so it says nothing extra.
+    assert "[tool.foro]" not in (target / "pyproject.toml").read_text()
     assert (target / "uv.lock").exists()
     assert (target / "README.md").exists()
     assert (target / ".gitignore").exists()
@@ -150,7 +195,7 @@ def test_scaffold_new_git_init(tmp_path):
 def test_scaffold_new_respects_custom_entrypoint(tmp_path):
     # app.py/tools/ are fixed structural filenames, independent of the
     # entrypoint's own name - "custom entrypoint" only ever means the file
-    # foro.yaml points at as the deploy entrypoint.
+    # the platform starts.
     target = tmp_path / "custom-entry"
     fields = ManifestFields(name="custom-entry", entrypoint="run.py")
 
@@ -179,7 +224,6 @@ def test_cli_init_from_scratch(tmp_path):
     )
 
     assert result.exit_code == 0, result.stdout
-    assert (target / "foro.yaml").exists()
     manifest = parse_and_validate(target, ".")
     assert manifest.name == "cli-scratch"
     assert manifest.entrypoint == "server.py"
@@ -200,9 +244,10 @@ def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):
 # --- CLI: existing-repo mode -----------------------------------------------
 
 
-def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
+def test_cli_init_existing_repo_touches_only_pyproject(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
     (tmp_path / "uv.lock").write_text("")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     monkeypatch.chdir(tmp_path)
 
     # accept all detected defaults, then decline the trailing git-init prompt
@@ -213,13 +258,17 @@ def test_cli_init_existing_repo_writes_only_manifest(tmp_path, monkeypatch):
     assert manifest.entrypoint == "server.py"
     # detected uv.lock -> no explicit override needed
     assert manifest.dependency_manager is None
-    assert not (tmp_path / "pyproject.toml").exists()
+    # Every answer was one inference already produces, so the file it was
+    # asked about is the only one touched, and even that is left alone.
+    assert (tmp_path / "pyproject.toml").read_text() == '[project]\nname = "my-server"\n'
+    assert not (tmp_path / "foro.yaml").exists()
     assert not (tmp_path / ".git").exists()
 
 
 def test_cli_init_existing_repo_offers_git_init_when_not_already_a_repo(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
     (tmp_path / "uv.lock").write_text("")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["init"], input="\n\n\n\n\ny\n")  # accept defaults, confirm git init
@@ -232,6 +281,7 @@ def test_cli_init_existing_repo_offers_git_init_when_not_already_a_repo(tmp_path
 def test_cli_init_existing_repo_skips_git_prompt_when_already_a_repo(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
     (tmp_path / "uv.lock").write_text("")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     (tmp_path / ".git").mkdir()  # pretend it's already a repo - no real `git init` needed for this
     monkeypatch.chdir(tmp_path)
 
@@ -243,6 +293,7 @@ def test_cli_init_existing_repo_skips_git_prompt_when_already_a_repo(tmp_path, m
 
 def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(
@@ -264,11 +315,14 @@ def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path
 
 
 def test_cli_init_existing_repo_declines_overwrite(tmp_path, monkeypatch):
-    write_manifest(tmp_path, ManifestFields(name="original", entrypoint="server.py"))
+    (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "my-server"\n\n[tool.foro]\nport = 9000\n'
+    )
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["init"], input="alt.py\n\ndifferent\n\n\nn\n")
+    # a different port, then defaults, then decline the overwrite
+    result = runner.invoke(app, ["init"], input="\n\n\n9100\nn\n")
 
     assert result.exit_code == 1
-    manifest = parse_and_validate(tmp_path, ".")
-    assert manifest.name == "original"
+    assert "port = 9000" in (tmp_path / "pyproject.toml").read_text()

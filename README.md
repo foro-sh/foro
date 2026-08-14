@@ -4,7 +4,7 @@
 
 **Sovereign infrastructure for MCP servers.**
 
-Push a Git repo with a `foro.yaml` to [foro.sh](https://foro.sh) and get a
+Push a Git repo with a `pyproject.toml` or a `package.json` to [foro.sh](https://foro.sh) and get a
 stable `https://<slug>.foro.sh` URL in about a minute — no Dockerfile, no YAML
 pipeline, no cloud console. This repository is the SDK that makes a repo
 deployable in the first place.

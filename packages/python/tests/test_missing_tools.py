@@ -143,6 +143,6 @@ def test_a_missing_git_warns_but_keeps_the_scaffolded_project(tmp_path, without)
     assert result.exit_code == 0, result.stdout
     assert "warning:" in result.stdout
     assert "`git` is not installed" in result.stdout
-    assert (target / "foro.yaml").is_file()
+    assert (target / "pyproject.toml").is_file()
     assert (target / "uv.lock").is_file()
     assert not (target / ".git").exists()

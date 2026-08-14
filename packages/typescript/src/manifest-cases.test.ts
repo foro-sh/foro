@@ -18,9 +18,9 @@ test('every case name is unique', () => {
   assert.equal(new Set(names).size, names.length)
 })
 
-test('every case has non-empty yaml and a well-formed expect', () => {
+test('every case has files to write and a well-formed expect', () => {
   for (const testCase of manifestCases) {
-    assert.ok(testCase.yaml.length > 0, `${testCase.name}: empty yaml`)
+    assert.ok(Object.keys(testCase.files).length > 0, `${testCase.name}: no files`)
     if (testCase.expect.ok) continue
     assert.ok(
       typeof testCase.expect.reason === 'string' && testCase.expect.reason.length > 0,

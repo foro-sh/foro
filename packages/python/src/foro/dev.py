@@ -3,7 +3,7 @@ would pass the platform's health gate. "If it passes here, it passes
 deployed."
 
 Two things layered on top of each other:
-  1. Start `uv run <entrypoint>` with $MCP_PORT set (matches
+  1. Start `uv run <entrypoint>` with $PORT set (matches
      Dockerfile.template's run step), then TCP-probe the port the same way
      foro-wrapper.sh's health sidecar does (a bare `socket.create_connection`,
      nothing HTTP-specific) - this is what catches the stdio-transport
@@ -58,7 +58,11 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
         "FASTMCP_SHOW_SERVER_BANNER": "false",
         **os.environ,
         **dotenv,
-        "MCP_PORT": str(port),
+        # Exactly what the platform injects (container-spec.ts), and last so
+        # the manifest's port wins over a stray PORT in .env - a dev run on a
+        # different port than the one probed reads as a server that never came
+        # up.
+        "PORT": str(port),
     }
     return popen(
         ["uv", "run", entrypoint],
@@ -135,7 +139,7 @@ def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[sub
         raise DevError(
             f"port {manifest.port} is already in use - something else is listening on "
             "it, so foro dev cannot tell its server apart from that one. Stop it, or "
-            "give this project a different `port:` in foro.yaml."
+            "give this project a different `port` in its [tool.foro] table."
         )
 
     process = start_server(repo_dir, manifest.entrypoint, manifest.build_path, manifest.port)

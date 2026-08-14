@@ -1,6 +1,6 @@
 """Filesystem-dependent check-only rules, exercised against whole miniature
 repos under tests/fixtures/<name>/ - the cases manifest-cases.json can't
-express because they turn on files on disk, not just foro.yaml content.
+express because they turn on files on disk, not just config-file content.
 
 Not every fixture from foro-sh/foro#5's original table is here: build-path-subdir,
 with-secrets, stdio-one-line, and bridge-stdio don't add coverage of check()
@@ -60,11 +60,40 @@ def test_no_manifest_fails():
     assert result.reason == "missing_manifest"
 
 
-def test_ts_project_fails_as_unsupported_language():
-    result = run_check(FIXTURES / "ts-project")
+def test_node_project_passes():
+    result = run_check(FIXTURES / "node-minimal")
+
+    assert result.ok
+    assert result.warnings == []
+
+
+def test_node_project_without_an_entry_file_fails():
+    # A package.json with no `main`, no `bin` and no index.js beside it: the
+    # runtime is unambiguous, the file to start is not.
+    result = run_check(FIXTURES / "node-no-entry")
 
     assert not result.ok
-    assert result.reason == "unsupported_language"
+    assert result.reason == "invalid_entrypoint"
+
+
+def test_node_project_under_a_python_build_path_is_told_which_field_to_set(tmp_path):
+    # `build_path` can point the build somewhere the config file isn't, so a
+    # Python project can still send the detector into a Node directory.
+    # Listing the Python markers it lacks would be honest and useless; naming
+    # the field is the actual fix.
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "my-server"\n\n[tool.foro]\n'
+        'entrypoint = "dist/index.js"\nbuild_path = "app"\n'
+    )
+    (tmp_path / "app" / "dist").mkdir(parents=True)
+    (tmp_path / "app" / "dist" / "index.js").write_text("")
+    (tmp_path / "app" / "package.json").write_text('{"name": "my-server"}\n')
+
+    result = run_check(tmp_path)
+
+    assert not result.ok
+    assert result.reason == "unsupported_project"
+    assert "runtime" in result.message
 
 
 def test_wrong_fastmcp_import_warns_but_passes():
@@ -80,7 +109,6 @@ def test_wrong_fastmcp_import_detected_outside_entrypoint(tmp_path):
     # construction in app.py, imported by the entrypoint - the wrong-import
     # scan has to look beyond just the entrypoint file or this regresses
     # silently for exactly the layout foro init itself now produces.
-    (tmp_path / "foro.yaml").write_text("name: split-server\nentrypoint: server.py\n")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "split-server"\n')
     (tmp_path / "app.py").write_text(
         'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("x")\n'
@@ -97,7 +125,6 @@ _MARKER = "from mcp.server.fastmcp import FastMCP\n"
 
 
 def _project(tmp_path):
-    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: server.py\n")
     (tmp_path / "server.py").write_text("import foro\n")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     return tmp_path

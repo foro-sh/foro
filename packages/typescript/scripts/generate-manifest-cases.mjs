@@ -30,9 +30,12 @@ if (!Array.isArray(cases) || cases.length === 0) {
 
 const seen = new Set()
 for (const testCase of cases) {
-  const { name, yaml, expect } = testCase ?? {}
-  if (typeof name !== 'string' || typeof yaml !== 'string') {
-    throw new Error(`${SOURCE}: every case needs a string \`name\` and \`yaml\``)
+  const { name, files, expect } = testCase ?? {}
+  if (typeof name !== 'string' || typeof files !== 'object' || files === null) {
+    throw new Error(`${SOURCE}: every case needs a string \`name\` and a \`files\` map`)
+  }
+  if (!Object.values(files).every((contents) => typeof contents === 'string')) {
+    throw new Error(`${SOURCE}: case "${name}" has a non-string file`)
   }
   if (seen.has(name)) {
     throw new Error(`${SOURCE}: duplicate case name "${name}"`)

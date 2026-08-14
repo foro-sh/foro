@@ -1,2 +1,0 @@
-name: stdio-only
-entrypoint: server.py

@@ -33,12 +33,10 @@ def test_run_dev_raises_on_stdio_only_server():
 
 
 def _dead_on_arrival(tmp_path, port, exit_code=3):
-    (tmp_path / "foro.yaml").write_text(
-        f"name: my-server\nentrypoint: server.py\nport: {port}\n"
-    )
     (tmp_path / "server.py").write_text(f"import sys\nsys.exit({exit_code})\n")
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "my-server"\nversion = "0.1.0"\nrequires-python = ">=3.10"\n'
+        '[project]\nname = "my-server"\nversion = "0.1.0"\nrequires-python = ">=3.11"\n'
+        f'\n[tool.foro]\nport = {port}\n'
     )
     return tmp_path
 
@@ -79,7 +77,7 @@ def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
 
 
 def test_start_server_loads_dotenv(tmp_path, monkeypatch):
-    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nMCP_PORT=9999\n")
+    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nPORT=9999\n")
     captured = {}
 
     def fake_popen(args, **kwargs):
@@ -93,9 +91,9 @@ def test_start_server_loads_dotenv(tmp_path, monkeypatch):
 
     env = captured["kwargs"]["env"]
     assert env["DEMO_SECRET"] == "from-dotenv"
-    # The manifest's real port always wins over a stray MCP_PORT in .env -
+    # The manifest's real port always wins over a stray PORT in .env -
     # that value is authoritative, not something local config should shadow.
-    assert env["MCP_PORT"] == "8000"
+    assert env["PORT"] == "8000"
 
 
 def _captured_env(tmp_path, monkeypatch):

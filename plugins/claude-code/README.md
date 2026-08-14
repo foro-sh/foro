@@ -46,7 +46,7 @@ their guidance stays current with the docs rather than hardcoding it.
 Skills are namespaced by the plugin name:
 
 - **`/foro:create-foro-project`** — scaffold a deployable MCP server. Runs
-  `uvx foro init`, explains the generated `foro.yaml` (pulling the current
+  `uvx foro init`, explains the generated project (pulling the current
   field list from `foro-docs`), states the two constraints that trip up first
   deploys (Python only — though any of uv/PDM/Poetry/pipenv/`requirements.txt`
   ships; secrets in the dashboard, never the repo), and finishes with
@@ -55,7 +55,7 @@ Skills are namespaced by the plugin name:
 - **`/foro:add-foro-to-existing-server`** — the other way in, for a server that
   already works locally. Converts the transport (a working local server is
   almost always on stdio, which never opens a port and fails the deploy health
-  check 60 seconds in), adds `foro.yaml` via `foro init`, and proves it with
+  check 60 seconds in), records anything foro can't infer via `foro init`, and proves it with
   `foro dev` before anything reaches the cloud.
 - **`/foro:deploy-to-foro`** — get it live. `git init` → commit →
   `gh repo create --push`, then the dashboard step (pick repo, add secrets,
