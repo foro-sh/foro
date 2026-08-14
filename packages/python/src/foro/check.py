@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from foro._manifest import ManifestError, parse_and_validate
+from foro._node_project import NodeDependencyManagerError
+from foro._node_project import detect_dependency_manager as detect_node_dependency_manager
 from foro._proc import MissingToolError
 from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
@@ -52,9 +54,14 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
             message=f"entrypoint {manifest.entrypoint!r} not found under {manifest.build_path}",
         )
 
+    detect = (
+        detect_node_dependency_manager
+        if manifest.runtime == "node"
+        else detect_dependency_manager
+    )
     try:
-        manager = detect_dependency_manager(build_dir, manifest.dependency_manager)
-    except DependencyManagerError as err:
+        manager = detect(build_dir, manifest.dependency_manager)
+    except (DependencyManagerError, NodeDependencyManagerError) as err:
         return CheckResult(ok=False, reason="unsupported_project", message=str(err))
 
     warnings: list[str] = []
