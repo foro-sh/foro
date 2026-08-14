@@ -17,7 +17,8 @@ from pathlib import Path
 
 import yaml as pyyaml
 
-from foro._python_project import DEPENDENCY_MANAGERS
+from foro._node_project import DEPENDENCY_MANAGERS as NODE_DEPENDENCY_MANAGERS
+from foro._python_project import DEPENDENCY_MANAGERS as PYTHON_DEPENDENCY_MANAGERS
 
 NAME_RE = re.compile(r"^[a-z0-9-]{3,48}$")
 # Per path segment: letters, digits, dot, underscore, hyphen - no shell
@@ -30,14 +31,26 @@ _PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # runtimes exist at all (platform issue #715). A runtime reaches this table
 # only once the platform can build it, gate it, and health-check it end to
 # end - the entry is what makes it selectable.
+#
+# Node starts at 22, not 20: the platform's in-container gate runs on the
+# user's own base image there and ships as TypeScript, which node only strips
+# unflagged from 22.18.
 RUNTIME_VERSIONS: dict[str, list[str]] = {
     "python": ["3.11", "3.12", "3.13"],
+    "node": ["22", "24"],
 }
 DEFAULT_RUNTIME_VERSIONS: dict[str, str] = {
     "python": "3.12",
+    "node": "24",
 }
 # Derived so it can't drift from the table it is validated against.
 RUNTIMES = list(RUNTIME_VERSIONS)
+# The `dependency_manager` allowlist a runtime is validated against - each
+# detector's own enum, so the two can't drift apart.
+DEPENDENCY_MANAGERS_BY_RUNTIME: dict[str, list[str]] = {
+    "python": PYTHON_DEPENDENCY_MANAGERS,
+    "node": NODE_DEPENDENCY_MANAGERS,
+}
 MIN_PORT = 1024
 MAX_PORT = 65535
 # The platform's health sidecar always binds this port inside the container
@@ -237,13 +250,16 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
             )
         port = raw_port
 
-    # dependency_manager - optional override for ambiguous repos.
+    # dependency_manager - optional override for ambiguous repos. Allowlisted
+    # per runtime: the field is shared but the vocabularies are disjoint.
+    managers = DEPENDENCY_MANAGERS_BY_RUNTIME[runtime]
     dependency_manager: str | None = None
     if "dependency_manager" in doc:
         raw_dm = doc["dependency_manager"]
-        if not isinstance(raw_dm, str) or raw_dm not in DEPENDENCY_MANAGERS:
+        if not isinstance(raw_dm, str) or raw_dm not in managers:
             raise ManifestError(
-                f"foro.yaml `dependency_manager` must be one of {', '.join(DEPENDENCY_MANAGERS)}",
+                f"foro.yaml `dependency_manager` must be one of {', '.join(managers)} "
+                f"for runtime `{runtime}`",
                 "invalid_dependency_manager",
             )
         dependency_manager = raw_dm

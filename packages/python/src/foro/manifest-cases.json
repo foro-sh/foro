@@ -125,10 +125,32 @@
   },
   {
     "name": "bad-runtime",
-    "yaml": "name: my-server\nentrypoint: server.py\nruntime: node\n",
+    "yaml": "name: my-server\nentrypoint: server.py\nruntime: ruby\n",
     "expect": {
       "ok": false,
       "reason": "invalid_runtime"
+    }
+  },
+  {
+    "name": "node-runtime",
+    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\n",
+    "expect": {
+      "ok": true
+    }
+  },
+  {
+    "name": "node-runtime-all-fields",
+    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\nruntime_version: \"22\"\ndependency_manager: pnpm\n",
+    "expect": {
+      "ok": true
+    }
+  },
+  {
+    "name": "node-runtime-python-version",
+    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\nruntime_version: \"3.12\"\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_runtime_version"
     }
   },
   {
@@ -190,6 +212,22 @@
   {
     "name": "bad-dependency-manager",
     "yaml": "name: my-server\nentrypoint: server.py\ndependency_manager: pipx\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_dependency_manager"
+    }
+  },
+  {
+    "name": "dependency-manager-from-another-runtime",
+    "yaml": "name: my-server\nentrypoint: server.py\ndependency_manager: npm\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_dependency_manager"
+    }
+  },
+  {
+    "name": "python-dependency-manager-on-node",
+    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\ndependency_manager: uv\n",
     "expect": {
       "ok": false,
       "reason": "invalid_dependency_manager"
