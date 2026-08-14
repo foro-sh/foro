@@ -276,18 +276,29 @@ def resolve_runtime_version(spec: object, runtime: str) -> str:
     return max(allowed, key=_version_key)
 
 
+def _parse_config(directory: Path, runtime: str) -> dict:
+    path = directory / CONFIG_FILES[runtime]
+    try:
+        if runtime == "python":
+            doc = tomllib.loads(path.read_text())
+        else:
+            doc = json.loads(path.read_text())
+    except (tomllib.TOMLDecodeError, json.JSONDecodeError, UnicodeDecodeError) as err:
+        raise ManifestError(
+            f"{CONFIG_FILES[runtime]} is not valid: {err}", "invalid_shape"
+        ) from None
+
+    if not isinstance(doc, dict):
+        raise ManifestError(f"{CONFIG_FILES[runtime]} must be a mapping of fields", "invalid_shape")
+    return doc
+
+
 def _read_config(directory: Path) -> tuple[str, dict]:
     """The runtime and parsed config file for a project directory."""
     present = [
         runtime for runtime, filename in CONFIG_FILES.items() if (directory / filename).exists()
     ]
 
-    if len(present) > 1:
-        raise ManifestError(
-            "This directory has both a pyproject.toml and a package.json - "
-            "set `runtime` in the config file of the one that is the MCP server",
-            "invalid_runtime",
-        )
     if not present:
         extra = (
             " foro.yaml is no longer read: move its fields into a `[tool.foro]` table."
@@ -298,22 +309,28 @@ def _read_config(directory: Path) -> tuple[str, dict]:
             f"No pyproject.toml or package.json found.{extra}",
             "missing_manifest",
         )
+    if len(present) == 1:
+        return present[0], _parse_config(directory, present[0])
 
-    runtime = present[0]
-    path = directory / CONFIG_FILES[runtime]
-    try:
-        if runtime == "python":
-            doc = tomllib.loads(path.read_text())
-        else:
-            doc = json.loads(path.read_text())
-    except (tomllib.TOMLDecodeError, json.JSONDecodeError) as err:
-        raise ManifestError(f"{CONFIG_FILES[runtime]} is not valid: {err}", "invalid_shape") from None
-
-    if not isinstance(doc, dict):
+    # Both files in one directory - a Python server whose repo carries a
+    # package.json for its tooling is the common case, so `runtime` breaks the
+    # tie rather than the presence rule guessing. Exactly one file has to
+    # claim it: neither, and there is nothing to go on; both, and they
+    # disagree.
+    parsed = {runtime: _parse_config(directory, runtime) for runtime in present}
+    claimed = [
+        runtime
+        for runtime, doc in parsed.items()
+        if _foro_block(doc, runtime).get("runtime") == runtime
+    ]
+    if len(claimed) != 1:
         raise ManifestError(
-            f"{CONFIG_FILES[runtime]} must be a mapping of fields", "invalid_shape"
+            "This directory has both a pyproject.toml and a package.json - set "
+            "`runtime` in the `[tool.foro]` table or `foro` key of whichever one "
+            "is the MCP server, and only that one",
+            "invalid_runtime",
         )
-    return runtime, doc
+    return claimed[0], parsed[claimed[0]]
 
 
 def _table(doc: dict, *path: str) -> dict:

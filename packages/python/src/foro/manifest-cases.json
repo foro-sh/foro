@@ -182,13 +182,40 @@
     "expect": { "ok": false, "reason": "invalid_runtime" }
   },
   {
-    "name": "both-config-files-in-one-directory",
+    "name": "both-config-files-and-neither-claims-the-runtime",
     "files": {
       "pyproject.toml": "[project]\nname = \"my-server\"\n",
       "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\"}",
       "server.py": ""
     },
     "expect": { "ok": false, "reason": "invalid_runtime" }
+  },
+  {
+    "name": "both-config-files-and-both-claim-the-runtime",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nruntime = \"python\"\n",
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"foro\": {\"runtime\": \"node\"}}",
+      "server.py": ""
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime" }
+  },
+  {
+    "name": "both-config-files-python-claims-the-runtime",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nruntime = \"python\"\n",
+      "package.json": "{\"name\": \"tooling-only\"}",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "both-config-files-node-claims-the-runtime",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n",
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"foro\": {\"runtime\": \"node\"}}",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
   },
   {
     "name": "no-config-file-only-a-legacy-manifest",
