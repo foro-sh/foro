@@ -38,6 +38,22 @@
     "expect": { "ok": true }
   },
   {
+    "name": "python-requires-python-exclusion",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\nrequires-python = \">=3.11,!=3.13\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-requires-python-excludes-every-supported-version-one-by-one",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\nrequires-python = \">=3.11,!=3.11,!=3.12,!=3.13\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
+  },
+  {
     "name": "python-hyphen-inside-a-path-segment-is-fine",
     "files": {
       "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"my-tools/mcp-server.py\"\n"
@@ -292,6 +308,20 @@
     "name": "node-engines-range",
     "files": {
       "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"engines\": {\"node\": \">=22\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-engines-union-of-every-supported-major",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"engines\": {\"node\": \"^22 || ^24\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-engines-union-with-one-unsupported-branch",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"engines\": {\"node\": \"^20 || ^22\"}}"
     },
     "expect": { "ok": true }
   },

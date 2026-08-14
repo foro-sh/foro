@@ -199,36 +199,32 @@ def _clause_bounds(
     return None, key, False  # `<`
 
 
-def resolve_runtime_version(spec: object, runtime: str) -> str:
-    """The interpreter version a `requires-python` / `engines.node` range asks
-    for: the newest allowlisted version inside it.
+def _branch_allowed(branch: str, versions: list[str]) -> tuple[list[str], bool]:
+    """The allowlisted versions one `||`-free branch of a spec admits, and
+    whether it contained anything this reader recognised at all.
 
-    Deliberately shallow - it reads the operators it recognises and ignores
-    everything else PEP 440 and npm allow (environment markers, `||`, `*`). A
-    spec it can't read at all resolves to the default rather than guessing; a
-    spec it *can* read that excludes every allowlisted version is an error,
-    because silently running an interpreter the project says it doesn't
-    support is worse than a failed deploy.
+    `!=` is applied on the components the two sides share, so `!=3.11.2`
+    excludes all of 3.11. Coarser than PEP 440 means it, but the allowlist has
+    no patch component to exclude instead, and dropping a version the project
+    says it doesn't want is the safe direction to be wrong in.
     """
-    versions = RUNTIME_VERSIONS[runtime]
-    if not isinstance(spec, str) or not spec.strip():
-        return DEFAULT_RUNTIME_VERSIONS[runtime]
-
     lower: tuple[int, ...] | None = None
     upper: tuple[int, ...] | None = None
     upper_inclusive = True
+    excluded: list[tuple[int, ...]] = []
     recognised = False
 
-    for operator, raw_version in _SPEC_CLAUSE_RE.findall(spec):
-        clause_lower, clause_upper, inclusive = _clause_bounds(operator, _version_key(raw_version))
+    for operator, raw_version in _SPEC_CLAUSE_RE.findall(branch):
+        key = _version_key(raw_version)
         recognised = True
+        if operator == "!=":
+            excluded.append(key)
+            continue
+        clause_lower, clause_upper, inclusive = _clause_bounds(operator, key)
         if clause_lower is not None and (lower is None or _compare(clause_lower, lower) > 0):
             lower = clause_lower
         if clause_upper is not None and (upper is None or _compare(clause_upper, upper) < 0):
             upper, upper_inclusive = clause_upper, inclusive
-
-    if not recognised:
-        return DEFAULT_RUNTIME_VERSIONS[runtime]
 
     def satisfies(version: str) -> bool:
         key = _version_key(version)
@@ -238,9 +234,39 @@ def resolve_runtime_version(spec: object, runtime: str) -> str:
             order = _compare(key, upper)
             if order > 0 or (order == 0 and not upper_inclusive):
                 return False
-        return True
+        return not any(_compare(key, exclusion) == 0 for exclusion in excluded)
 
-    allowed = [version for version in versions if satisfies(version)]
+    return [version for version in versions if satisfies(version)], recognised
+
+
+def resolve_runtime_version(spec: object, runtime: str) -> str:
+    """The interpreter version a `requires-python` / `engines.node` range asks
+    for: the newest allowlisted version inside it.
+
+    Deliberately shallow - it reads the operators it recognises and ignores
+    everything else PEP 440 and npm allow (environment markers, `*`). A spec
+    it can't read at all resolves to the default rather than guessing; a spec
+    it *can* read that excludes every allowlisted version is an error, because
+    silently running an interpreter the project says it doesn't support is
+    worse than a failed deploy.
+
+    `||` is a union, not one more clause to intersect - `^22 || ^24` is how a
+    package.json spells the two majors foro supports, and reading it as a
+    single range makes the most idiomatic spelling of "both" mean "neither".
+    """
+    versions = RUNTIME_VERSIONS[runtime]
+    if not isinstance(spec, str) or not spec.strip():
+        return DEFAULT_RUNTIME_VERSIONS[runtime]
+
+    allowed: set[str] = set()
+    recognised = False
+    for branch in spec.split("||"):
+        branch_allowed, branch_recognised = _branch_allowed(branch, versions)
+        allowed.update(branch_allowed)
+        recognised = recognised or branch_recognised
+
+    if not recognised:
+        return DEFAULT_RUNTIME_VERSIONS[runtime]
     if not allowed:
         raise ManifestError(
             f"`{spec}` allows no {runtime} version foro can run - "
