@@ -1,5 +1,5 @@
 /**
- * The shared `foro.yaml` validation table.
+ * The shared project-config validation table.
  *
  * foro's `_manifest.py` is a port of foro-sh/platform's
  * `apps/api/src/services/manifest.ts`, and the two can never be allowed to
@@ -36,8 +36,10 @@ export type ManifestRejectionReason =
 export interface ManifestCase {
   /** Stable identifier, unique across the table - use it as the test name. */
   readonly name: string
-  /** Verbatim `foro.yaml` contents to validate. */
-  readonly yaml: string
+  /** Files to write into an empty directory before validating it, keyed by
+   *  repo-relative path. Always the config file under test, plus whatever the
+   *  entry-file inference has to find on disk. */
+  readonly files: Readonly<Record<string, string>>
   readonly expect:
     | { readonly ok: true }
     | { readonly ok: false; readonly reason: ManifestRejectionReason }

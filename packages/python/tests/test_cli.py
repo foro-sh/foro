@@ -16,7 +16,6 @@ def test_version():
 
 
 def test_check_passes_valid_project(tmp_path):
-    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: server.py\n")
     (tmp_path / "server.py").write_text("# mcp server\n")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
 
@@ -27,12 +26,14 @@ def test_check_passes_valid_project(tmp_path):
 
 
 def test_check_fails_invalid_project(tmp_path):
-    (tmp_path / "foro.yaml").write_text("name: My_Server\nentrypoint: server.py\n")
+    # A Python project whose entry file is none of the names foro looks for
+    # and which never says where it is.
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
 
     result = runner.invoke(app, ["check", str(tmp_path)])
 
     assert result.exit_code == 1
-    assert "invalid_name" in result.stdout
+    assert "invalid_entrypoint" in result.stdout
 
 
 def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
@@ -45,10 +46,10 @@ def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
     result = runner.invoke(app, ["init", "--yes"])
 
     assert result.exit_code == 0, result.stdout
-    manifest = (tmp_path / "foro.yaml").read_text()
-    assert "entrypoint: server.py" in manifest
-    assert f"runtime_version: '{DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME]}'" in manifest
-    assert f"port: {DEFAULT_PORT}" in manifest
+    # Every default answer is one the platform infers, so there is nothing to
+    # write down - that is the point of the defaults, not a failure to act.
+    assert "nothing to configure" in result.stdout
+    assert "[tool.foro]" not in (tmp_path / "pyproject.toml").read_text()
 
 
 TOKEN = "foro_pat_" + "b" * 43

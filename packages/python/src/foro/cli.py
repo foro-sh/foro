@@ -47,10 +47,11 @@ from foro.init import (
     ScaffoldError,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
-    existing_manifest_diff,
+    existing_foro_table_diff,
     init_git_repo,
     scaffold_new,
-    write_manifest,
+    MissingPyprojectError,
+    write_foro_table,
 )
 
 app = typer.Typer(
@@ -179,8 +180,8 @@ def _prompt_port(default: int) -> int:
 def init(
     name: Optional[str] = typer.Argument(
         None,
-        help="Directory to scaffold a new project into. Omit to add foro.yaml "
-        "to the current directory instead.",
+        help="Directory to scaffold a new project into. Omit to record the "
+        "current directory\'s foro settings in its pyproject.toml instead.",
     ),
     yes: bool = typer.Option(
         False,
@@ -188,10 +189,10 @@ def init(
         "-y",
         help="Accept every default instead of prompting, so init runs "
         "unattended (in CI, or when an agent drives it). An existing "
-        "foro.yaml is still never overwritten.",
+        "[tool.foro] table is still never overwritten.",
     ),
 ) -> None:
-    """Scaffold a new MCP server, or add foro.yaml to an existing one."""
+    """Scaffold a new MCP server, or record an existing one\'s foro settings."""
     global _assume_yes
     _assume_yes = yes
 
@@ -205,7 +206,7 @@ def _init_from_scratch(target: Path) -> None:
     if target.exists() and any(target.iterdir()):
         typer.secho(
             f"✗ {target} already exists and is not empty - run `foro init` with no "
-            "argument inside it to add just a foro.yaml",
+            "argument inside it to configure the project that is already there",
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
@@ -260,16 +261,26 @@ def _init_existing(dir_path: Path) -> None:
         dependency_manager=dependency_manager if dependency_manager != detected_manager else None,
     )
 
-    diff = existing_manifest_diff(dir_path, fields)
+    diff = existing_foro_table_diff(dir_path, fields)
     if diff:
-        typer.echo("foro.yaml already exists. Diff:")
+        typer.echo("pyproject.toml already has a [tool.foro] table. Diff:")
         typer.echo(diff)
         if not _confirm("Overwrite?", default=False):
             typer.echo("Aborted.")
             raise typer.Exit(code=1)
 
-    write_manifest(dir_path, fields)
-    typer.secho(f"✓ wrote {dir_path / 'foro.yaml'}", fg=typer.colors.GREEN)
+    try:
+        wrote = write_foro_table(dir_path, fields)
+    except MissingPyprojectError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    if wrote:
+        typer.secho(f"✓ updated {dir_path / 'pyproject.toml'}", fg=typer.colors.GREEN)
+    else:
+        # Nothing to write is the good outcome, not a no-op worth apologising
+        # for: the platform infers every answer given.
+        typer.secho("✓ nothing to configure - this project deploys as it is", fg=typer.colors.GREEN)
 
     # Not already a repo, and deploying to foro.sh means pushing to GitHub -
     # worth asking here too, not just in from-scratch mode.
@@ -277,7 +288,7 @@ def _init_existing(dir_path: Path) -> None:
         try:
             init_git_repo(dir_path)
         except GitInitError as err:
-            # foro.yaml is already written, which is all this mode promises.
+            # The config is already written, which is all this mode promises.
             typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
 

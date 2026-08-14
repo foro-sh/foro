@@ -1,299 +1,340 @@
 [
   {
-    "name": "minimal-valid",
-    "yaml": "name: my-server\nentrypoint: server.py\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-minimal",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "nested-entrypoint",
-    "yaml": "name: my-server\nentrypoint: src/server.py\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-poetry-only-name",
+    "files": {
+      "pyproject.toml": "[tool.poetry]\nname = \"my-server\"\n",
+      "main.py": ""
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "all-fields",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: app\nruntime: python\nruntime_version: \"3.11\"\nport: 9000\ndependency_manager: poetry\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-explicit-entrypoint",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"src/server.py\"\n"
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "unquoted-runtime-version",
-    "yaml": "name: my-server\nentrypoint: server.py\nruntime_version: 3.12\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-all-fields",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nbuild_path = \"app\"\nentrypoint = \"server.py\"\nruntime = \"python\"\nruntime_version = \"3.11\"\nport = 9000\ndependency_manager = \"poetry\"\n"
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "bad-name-uppercase",
-    "yaml": "name: My-Server\nentrypoint: server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_name"
-    }
+    "name": "python-requires-python-range",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\nrequires-python = \">=3.11,<3.13\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "bad-name-too-short",
-    "yaml": "name: ab\nentrypoint: server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_name"
-    }
+    "name": "python-hyphen-inside-a-path-segment-is-fine",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"my-tools/mcp-server.py\"\n"
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "missing-name",
-    "yaml": "entrypoint: server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_name"
-    }
+    "name": "python-scoped-unspellable-name-is-normalised",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"My_Server\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": true }
   },
   {
-    "name": "bad-entrypoint-traversal",
-    "yaml": "name: my-server\nentrypoint: ../server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
+    "name": "python-no-entry-file",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "bad-entrypoint-absolute",
-    "yaml": "name: my-server\nentrypoint: /server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
+    "name": "python-entrypoint-traversal",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"../server.py\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "bad-entrypoint-shell-metachar",
-    "yaml": "name: my-server\nentrypoint: \"server.py; rm -rf x\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
+    "name": "python-entrypoint-absolute",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"/server.py\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "missing-entrypoint",
-    "yaml": "name: my-server\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
+    "name": "python-entrypoint-shell-metachar",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py; rm -rf x\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "bad-build-path-traversal",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: ../x\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_build_path"
-    }
+    "name": "python-entrypoint-leading-dash",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"--isolated\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "bad-build-path-shell-metachar",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \". && whoami\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_build_path"
-    }
+    "name": "python-entrypoint-leading-dash-nested",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"src/-rf.py\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
-    "name": "bad-build-path-space",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \"my services\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_build_path"
-    }
+    "name": "python-build-path-traversal",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nbuild_path = \"../x\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
-    "name": "bad-build-path-newline",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: \"app\\nUSER root\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_build_path"
-    }
+    "name": "python-build-path-shell-metachar",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nbuild_path = \". && whoami\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
-    "name": "bad-runtime-version",
-    "yaml": "name: my-server\nentrypoint: server.py\nruntime_version: \"3.9\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_runtime_version"
-    }
+    "name": "python-build-path-space",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nbuild_path = \"my services\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
-    "name": "bad-runtime",
-    "yaml": "name: my-server\nentrypoint: server.py\nruntime: ruby\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_runtime"
-    }
+    "name": "python-build-path-newline",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nbuild_path = \"app\\nUSER root\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
-    "name": "node-runtime",
-    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-build-path-leading-dash",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nbuild_path = \"-rf\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_build_path" }
   },
   {
-    "name": "node-runtime-all-fields",
-    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\nruntime_version: \"22\"\ndependency_manager: pnpm\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "python-runtime-version-outside-allowlist",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nruntime_version = \"3.9\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
   },
   {
-    "name": "node-runtime-python-version",
-    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\nruntime_version: \"3.12\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_runtime_version"
-    }
+    "name": "python-requires-python-excludes-every-supported-version",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\nrequires-python = \"==3.9\"\n",
+      "server.py": ""
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
   },
   {
-    "name": "runtime-version-from-another-runtime",
-    "yaml": "name: my-server\nentrypoint: server.py\nruntime: python\nruntime_version: \"22\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_runtime_version"
-    }
+    "name": "python-runtime-version-from-another-runtime",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nruntime_version = \"22\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
+  },
+  {
+    "name": "runtime-outside-allowlist",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nruntime = \"ruby\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime" }
+  },
+  {
+    "name": "runtime-disagrees-with-the-file-it-was-read-from",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nruntime = \"node\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime" }
+  },
+  {
+    "name": "both-config-files-in-one-directory",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n",
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\"}",
+      "server.py": ""
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime" }
+  },
+  {
+    "name": "no-config-file-only-a-legacy-manifest",
+    "files": {
+      "foro.yaml": "name: my-server\nentrypoint: server.py\n",
+      "server.py": ""
+    },
+    "expect": { "ok": false, "reason": "missing_manifest" }
   },
   {
     "name": "unknown-field-stale-python-version",
-    "yaml": "name: my-server\nentrypoint: server.py\npython_version: \"3.13\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "unknown_field"
-    }
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\npython_version = \"3.13\"\n"
+    },
+    "expect": { "ok": false, "reason": "unknown_field" }
   },
   {
     "name": "unknown-field-typo",
-    "yaml": "name: my-server\nentrypoint: server.py\nentrypoints: server.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "unknown_field"
-    }
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nentrypoints = \"server.py\"\n"
+    },
+    "expect": { "ok": false, "reason": "unknown_field" }
   },
   {
-    "name": "bad-port-too-low",
-    "yaml": "name: my-server\nentrypoint: server.py\nport: 80\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_port"
-    }
+    "name": "unknown-field-name-belongs-to-the-package",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nname = \"other\"\n"
+    },
+    "expect": { "ok": false, "reason": "unknown_field" }
   },
   {
-    "name": "bad-port-too-high",
-    "yaml": "name: my-server\nentrypoint: server.py\nport: 70000\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_port"
-    }
+    "name": "port-too-low",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nport = 80\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_port" }
   },
   {
-    "name": "bad-port-sidecar-reserved",
-    "yaml": "name: my-server\nentrypoint: server.py\nport: 8001\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_port"
-    }
+    "name": "port-too-high",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nport = 70000\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_port" }
   },
   {
-    "name": "bad-port-gate-reserved",
-    "yaml": "name: my-server\nentrypoint: server.py\nport: 8002\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_port"
-    }
+    "name": "port-sidecar-reserved",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nport = 8001\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_port" }
   },
   {
-    "name": "bad-port-non-integer",
-    "yaml": "name: my-server\nentrypoint: server.py\nport: \"abc\"\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_port"
-    }
+    "name": "port-gate-reserved",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nport = 8002\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_port" }
   },
   {
-    "name": "bad-dependency-manager",
-    "yaml": "name: my-server\nentrypoint: server.py\ndependency_manager: pipx\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_dependency_manager"
-    }
+    "name": "port-non-integer",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\nport = \"abc\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_port" }
   },
   {
-    "name": "dependency-manager-from-another-runtime",
-    "yaml": "name: my-server\nentrypoint: server.py\ndependency_manager: npm\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_dependency_manager"
-    }
+    "name": "dependency-manager-outside-allowlist",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\ndependency_manager = \"pipx\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_dependency_manager" }
+  },
+  {
+    "name": "node-dependency-manager-on-python",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\ndependency_manager = \"npm\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_dependency_manager" }
+  },
+  {
+    "name": "unparseable-pyproject",
+    "files": {
+      "pyproject.toml": "[project\nname = \"my-server\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_shape" }
+  },
+  {
+    "name": "node-minimal",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"dist/index.js\"}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-scoped-name",
+    "files": {
+      "package.json": "{\"name\": \"@acme/my-server\", \"main\": \"dist/index.js\"}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-bin-map",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"bin\": {\"my-server\": \"dist/cli.js\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-implicit-index",
+    "files": {
+      "package.json": "{\"name\": \"my-server\"}",
+      "index.js": ""
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-engines-range",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"engines\": {\"node\": \">=22\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-all-fields",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"dist/index.js\", \"foro\": {\"runtime\": \"node\", \"runtime_version\": \"22\", \"port\": 9000, \"dependency_manager\": \"pnpm\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-no-entry-file",
+    "files": {
+      "package.json": "{\"name\": \"my-server\"}"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "node-engines-excludes-every-supported-version",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"engines\": {\"node\": \"^20\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
+  },
+  {
+    "name": "node-runtime-version-from-another-runtime",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"foro\": {\"runtime_version\": \"3.12\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_runtime_version" }
   },
   {
     "name": "python-dependency-manager-on-node",
-    "yaml": "name: my-server\nentrypoint: dist/index.js\nruntime: node\ndependency_manager: uv\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_dependency_manager"
-    }
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"foro\": {\"dependency_manager\": \"uv\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_dependency_manager" }
   },
   {
-    "name": "invalid-yaml",
-    "yaml": "name: [unclosed\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_yaml"
-    }
-  },
-  {
-    "name": "invalid-shape-scalar",
-    "yaml": "just a string\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_shape"
-    }
-  },
-  {
-    "name": "invalid-shape-list",
-    "yaml": "- one\n- two\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_shape"
-    }
-  },
-  {
-    "name": "bad-entrypoint-leading-dash",
-    "yaml": "name: my-server\nentrypoint: --isolated\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
-  },
-  {
-    "name": "bad-entrypoint-leading-dash-nested",
-    "yaml": "name: my-server\nentrypoint: src/-rf.py\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_entrypoint"
-    }
-  },
-  {
-    "name": "bad-build-path-leading-dash",
-    "yaml": "name: my-server\nentrypoint: server.py\nbuild_path: -rf\n",
-    "expect": {
-      "ok": false,
-      "reason": "invalid_build_path"
-    }
-  },
-  {
-    "name": "hyphen-inside-a-path-segment-is-fine",
-    "yaml": "name: my-server\nentrypoint: my-tools/mcp-server.py\n",
-    "expect": {
-      "ok": true
-    }
+    "name": "unparseable-package-json",
+    "files": {
+      "package.json": "{\"name\": "
+    },
+    "expect": { "ok": false, "reason": "invalid_shape" }
   }
 ]

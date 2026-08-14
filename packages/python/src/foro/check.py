@@ -3,8 +3,9 @@ contract, so a failure surfaces instantly and locally instead of as a
 60-second health-check timeout.
 
 Layers two things on top of each other:
-  1. The same foro.yaml validation the platform runs at deploy time
-     (_manifest.py, _python_project.py) - same rules, same reason codes.
+  1. The same pyproject.toml / package.json validation the platform runs at
+     deploy time (_manifest.py, _python_project.py) - same rules, same
+     reason codes.
   2. Check-only rules the platform can't catch until build time: whether the
      entrypoint file actually exists, and whether a committed uv.lock is in
      sync with pyproject.toml.
