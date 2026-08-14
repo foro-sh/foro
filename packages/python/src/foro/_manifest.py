@@ -53,11 +53,13 @@ DEPENDENCY_MANAGERS_BY_RUNTIME: dict[str, list[str]] = {
 }
 MIN_PORT = 1024
 MAX_PORT = 65535
-# The platform's health sidecar always binds this port inside the container
-# (foro-wrapper.sh) - a server on the same port either fails to start or is
-# shadowed by it, so Traefik would route + health-check into a dead end.
-# Mirrors container-spec.ts's SIDECAR_PORT.
+# Ports the platform's gate binds inside every container (foro-proxy.mts): the
+# one Traefik routes to, and the one it health-checks. A server on either
+# fails to start or is shadowed by the gate, so Traefik would route or
+# health-check into a dead end. Mirrors container-spec.ts.
 SIDECAR_PORT = 8001
+PROXY_PORT = 8002
+RESERVED_PORTS = sorted([PROXY_PORT, SIDECAR_PORT])
 
 DEFAULT_RUNTIME = "python"
 DEFAULT_PORT = 8000
@@ -229,7 +231,7 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
             )
         runtime_version = normalised
 
-    # port - optional, 1024-65535, excluding SIDECAR_PORT.
+    # port - optional, 1024-65535, excluding the gate's own ports.
     port = DEFAULT_PORT
     if "port" in doc:
         raw_port = doc["port"]
@@ -242,10 +244,11 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
                 f"foro.yaml `port` must be an integer between {MIN_PORT} and {MAX_PORT}",
                 "invalid_port",
             )
-        if raw_port == SIDECAR_PORT:
+        if raw_port in RESERVED_PORTS:
             raise ManifestError(
-                f"foro.yaml `port` cannot be {SIDECAR_PORT} - that port is reserved for "
-                "the platform's health sidecar",
+                f"foro.yaml `port` cannot be {raw_port} - "
+                f"{' and '.join(str(p) for p in RESERVED_PORTS)} are reserved for the "
+                "platform gate",
                 "invalid_port",
             )
         port = raw_port

@@ -202,6 +202,14 @@
     }
   },
   {
+    "name": "bad-port-gate-reserved",
+    "yaml": "name: my-server\nentrypoint: server.py\nport: 8002\n",
+    "expect": {
+      "ok": false,
+      "reason": "invalid_port"
+    }
+  },
+  {
     "name": "bad-port-non-integer",
     "yaml": "name: my-server\nentrypoint: server.py\nport: \"abc\"\n",
     "expect": {
