@@ -67,6 +67,22 @@ def test_ts_project_fails_as_unsupported_language():
     assert result.reason == "unsupported_language"
 
 
+def test_node_repo_without_a_runtime_is_told_which_field_to_set(tmp_path):
+    # `runtime` is not inferred from what's on disk, so this repo validates on
+    # the default (python) and fails detection. Listing the Python markers it
+    # lacks would be honest and useless; naming the field is the actual fix.
+    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: dist/index.js\n")
+    (tmp_path / "package.json").write_text('{"name": "my-server"}\n')
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "index.js").write_text("")
+
+    result = run_check(tmp_path)
+
+    assert not result.ok
+    assert result.reason == "unsupported_project"
+    assert "runtime: node" in result.message
+
+
 def test_wrong_fastmcp_import_warns_but_passes():
     result = run_check(FIXTURES / "wrong-fastmcp-import")
 
