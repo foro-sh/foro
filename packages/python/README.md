@@ -122,7 +122,7 @@ def add(a: int, b: int) -> int:
     return a + b
 
 if __name__ == "__main__":
-    foro.run(mcp)  # streamable HTTP, host 0.0.0.0, port $MCP_PORT - identical locally and deployed
+    foro.run(mcp)  # streamable HTTP, host 0.0.0.0, port $PORT - identical locally and deployed
 ```
 
 | Function | What it does |
@@ -164,8 +164,8 @@ dependency_manager = "poetry" # only when a repo is genuinely ambiguous
 { "foro": { "port": 9000 } }
 ```
 
-At runtime the container gets `PORT` and `MCP_PORT` (both the same value) and
-every project secret as its own env var. Public traffic arrives at
+At runtime the container gets `PORT` and every project secret as its own env
+var. Public traffic arrives at
 `https://<slug>.foro.sh`, so your server must listen on `0.0.0.0:$PORT` —
 which is exactly what `foro.run()` does for you.
 

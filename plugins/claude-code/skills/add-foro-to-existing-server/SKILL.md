@@ -43,7 +43,7 @@ import foro
 foro.run(mcp)   # or whatever the FastMCP instance is called
 ```
 
-`foro.run()` serves streamable HTTP on all interfaces on `$MCP_PORT` —
+`foro.run()` serves streamable HTTP on all interfaces on `$PORT` —
 identical locally and deployed. Do not hand-roll the equivalent: a server that
 binds `127.0.0.1`, or a fixed port that disagrees with the one foro runs it
 on, fails the health check in a way that reads like a crash.

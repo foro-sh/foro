@@ -77,7 +77,7 @@ def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
 
 
 def test_start_server_loads_dotenv(tmp_path, monkeypatch):
-    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nMCP_PORT=9999\n")
+    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nPORT=9999\n")
     captured = {}
 
     def fake_popen(args, **kwargs):
@@ -91,9 +91,9 @@ def test_start_server_loads_dotenv(tmp_path, monkeypatch):
 
     env = captured["kwargs"]["env"]
     assert env["DEMO_SECRET"] == "from-dotenv"
-    # The manifest's real port always wins over a stray MCP_PORT in .env -
+    # The manifest's real port always wins over a stray PORT in .env -
     # that value is authoritative, not something local config should shadow.
-    assert env["MCP_PORT"] == "8000"
+    assert env["PORT"] == "8000"
 
 
 def _captured_env(tmp_path, monkeypatch):

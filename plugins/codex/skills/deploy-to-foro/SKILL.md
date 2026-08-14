@@ -76,7 +76,7 @@ foro.sh splits logs into two streams — check the right one:
   `runtime` and `runtime_version`.
 - **Deploy log** — the orchestration narrative: clone, config validation,
   container start, health check, and the failure reason. Look here for a wrong
-  `entrypoint`, a server not listening on `0.0.0.0:$MCP_PORT`, or a health
+  `entrypoint`, a server not listening on `0.0.0.0:$PORT`, or a health
   check that timed out.
 
 Usual suspects, in rough order of frequency:
@@ -87,7 +87,7 @@ Usual suspects, in rough order of frequency:
    `foro.run(...)`.
 3. **Unset secret** — the code calls `foro.secret("NAME")` but `NAME` wasn't
    added in the Secrets tab. Add it and redeploy.
-4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$MCP_PORT`,
+4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$PORT`,
    which `foro.run()` does for you; a hand-rolled `run()` that binds
    `127.0.0.1` or a fixed port will fail the health check.
 

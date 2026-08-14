@@ -172,7 +172,7 @@ def _compare(a: tuple[int, ...], b: tuple[int, ...]) -> int:
     return (a[:n] > b[:n]) - (a[:n] < b[:n])
 
 
-_SPEC_CLAUSE_RE = re.compile(r"(>=|<=|==|~=|~|\^|>|<)?\s*(\d+(?:\.\d+)*)")
+_SPEC_CLAUSE_RE = re.compile(r"(>=|<=|==|!=|~=|~|\^|>|<)?\s*(\d+(?:\.\d+)*)")
 
 
 def _clause_bounds(
