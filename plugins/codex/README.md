@@ -39,7 +39,7 @@ Codex selects a skill by its description, so these are invoked by asking for
 what you want, not by a slash command:
 
 - **create-foro-project** — scaffold a deployable MCP server. Runs
-  `uvx foro init`, explains the generated `foro.yaml` (pulling the current
+  `uvx foro init`, explains the generated project (pulling the current
   field list from `foro-docs`), states the two constraints that trip up first
   deploys (Python only — though any of uv/PDM/Poetry/pipenv/`requirements.txt`
   ships; secrets in the dashboard, never the repo), and finishes with
@@ -48,7 +48,7 @@ what you want, not by a slash command:
 - **add-foro-to-existing-server** — the other way in, for a server that already
   works locally. Converts the transport (a working local server is almost always
   on stdio, which never opens a port and fails the deploy health check 60
-  seconds in), adds `foro.yaml` via `foro init`, and proves it with `foro dev`
+  seconds in), records anything foro can't infer via `foro init`, and proves it with `foro dev`
   before anything reaches the cloud.
 - **deploy-to-foro** — get it live. `git init` → commit → `gh repo create
   --push`, then the dashboard step (pick repo, add secrets, Deploy — honestly a
@@ -86,6 +86,6 @@ rather than mocking them up.
 ## Scope
 
 Skills only. No hooks — Codex supports `SessionStart` and friends, but
-a hook that fires every session to look for a `foro.yaml` is the kind of thing
+a hook that fires every session to look for a foro project is the kind of thing
 that gets disabled and then rots; the skill descriptions are enough for the
 model to reach for them. No agents, no LSP config.

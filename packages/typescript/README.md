@@ -4,16 +4,18 @@ This package is the TypeScript SDK for Foro.
 
 ## `@foro-sh/foro/manifest-cases`
 
-The shared `foro.yaml` validation table, as typed data. Foro's Python
+The shared project-config validation table, as typed data. Foro's Python
 `_manifest.py` is a port of [foro-sh/platform]'s
 `apps/api/src/services/manifest.ts`, so both implementations run this same
-table to guarantee they never disagree about what a valid manifest is — if
-they did, `foro check` would pass locally and the deploy would fail.
+table to guarantee they never disagree about what a valid `pyproject.toml` or
+`package.json` is — if they did, `foro check` would pass locally and the deploy
+would fail.
 
 ```ts
 import { manifestCases } from '@foro-sh/foro/manifest-cases'
 
-for (const { name, yaml, expect } of manifestCases) {
+for (const { name, files, expect } of manifestCases) {
+  // write `files` into an empty directory, then validate it
   // expect is { ok: true } or { ok: false, reason: ManifestRejectionReason }
 }
 ```

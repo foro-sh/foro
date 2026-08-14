@@ -10,7 +10,7 @@ The Python SDK and CLI for [foro.sh](https://foro.sh) — the fastest path from
 - [Quickstart](#quickstart)
 - [CLI](#cli)
 - [Runtime](#runtime)
-- [`foro.yaml` reference](#foroyaml-reference)
+- [Project config](#project-config)
 - [Example](#example)
 - [Develop this package](#develop-this-package)
 
@@ -21,9 +21,9 @@ uvx foro init my-server && cd my-server
 uvx foro dev
 ```
 
-`foro init` scaffolds a working [FastMCP](https://gofastmcp.com) server plus
-a `foro.yaml`; `foro dev` runs it exactly as foro.sh will and confirms it
-would pass the platform's health check. Once it looks good:
+`foro init` scaffolds a working [FastMCP](https://gofastmcp.com) server;
+`foro dev` runs it exactly as foro.sh will and confirms it would pass the
+platform's health check. Once it looks good:
 
 ```bash
 git init && git add -A && git commit -m "init" && gh repo create --push
@@ -39,7 +39,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 
 | Command | What it does |
 | --- | --- |
-| `foro init [name]` | Scaffold a new project, or add `foro.yaml` to an existing one (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
+| `foro init [name]` | Scaffold a new project, or record an existing one's foro settings in its `pyproject.toml` (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
 | `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
 | `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
@@ -134,22 +134,39 @@ Bare `foro` (what a deployed container installs — no `[cli]` extra) stays
 dependency-free, so a deployed container never pulls in CLI tooling it
 doesn't use.
 
-## `foro.yaml` reference
+## Project config
 
-Every deployable repo carries one, at its root:
+There is no foro-specific manifest. A repo's `pyproject.toml` (Python) or
+`package.json` (Node) already names the project and points at the file that
+starts it, and that is what foro.sh reads:
 
-```yaml
-name: my-server          # required, ^[a-z0-9-]{3,48}$ - display name only, not the URL slug
-entrypoint: server.py    # required, relative path, run as `uv run <entrypoint>`
-build_path: .            # optional, default "." - dir holding pyproject.toml + uv.lock
-runtime: python          # optional, currently python only
-runtime_version: "3.12"  # optional, one of 3.11 / 3.12 / 3.13
-port: 8000               # optional, default 8000 - the port your server must listen on
+| What foro needs | Python | Node |
+| --- | --- | --- |
+| display name | `[project].name` | `name` |
+| runtime | a `pyproject.toml` is here | a `package.json` is here |
+| interpreter version | `requires-python`, resolved to the newest supported version it allows | `engines.node`, same |
+| entry file | `server.py`, `main.py`, `src/server.py` or `app.py` | `main`, then `bin`, then `index.js` |
+| dependency manager | the lockfile (uv, PDM, Poetry, pipenv, `requirements.txt`) | the lockfile (npm, pnpm, yarn) |
+
+The rest is optional, and only for what those files can't say:
+
+```toml
+# pyproject.toml - every key optional, most projects have no such table
+[tool.foro]
+entrypoint = "cmd/serve.py"   # only when it isn't one of the names above
+runtime_version = "3.13"      # only to pin against what requires-python allows
+port = 9000                   # only when your server can't listen on $PORT
+dependency_manager = "poetry" # only when a repo is genuinely ambiguous
 ```
 
-At runtime the container gets `MCP_PORT` (matching `port` above) and every
-project secret as its own env var. Public traffic arrives at
-`https://<slug>.foro.sh`, so your server must listen on `0.0.0.0:$MCP_PORT` —
+```json
+// package.json - the same keys, under "foro"
+{ "foro": { "port": 9000 } }
+```
+
+At runtime the container gets `PORT` and `MCP_PORT` (both the same value) and
+every project secret as its own env var. Public traffic arrives at
+`https://<slug>.foro.sh`, so your server must listen on `0.0.0.0:$PORT` —
 which is exactly what `foro.run()` does for you.
 
 ## Example

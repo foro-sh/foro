@@ -1,6 +1,6 @@
 ---
 name: add-foro-to-existing-server
-description: Make an MCP server that already exists deployable on foro.sh. Use when the user has a working local MCP server (usually stdio, run through a client's config) and wants it reachable at a public URL, mentions porting or migrating an existing server to foro.sh, or runs `foro init` in a repo that already has code. Converts the transport, adds foro.yaml, and proves it with `foro dev`.
+description: Make an MCP server that already exists deployable on foro.sh. Use when the user has a working local MCP server (usually stdio, run through a client's config) and wants it reachable at a public URL, mentions porting or migrating an existing server to foro.sh, or runs `foro init` in a repo that already has code. Converts the transport, records anything foro can't infer, and proves it with `foro dev`.
 ---
 
 # Add foro.sh to an existing MCP server
@@ -45,8 +45,8 @@ foro.run(mcp)   # or whatever the FastMCP instance is called
 
 `foro.run()` serves streamable HTTP on all interfaces on `$MCP_PORT` —
 identical locally and deployed. Do not hand-roll the equivalent: a server that
-binds `127.0.0.1`, or a fixed port that disagrees with `foro.yaml`, fails the
-health check in a way that reads like a crash.
+binds `127.0.0.1`, or a fixed port that disagrees with the one foro runs it
+on, fails the health check in a way that reads like a crash.
 
 Add `foro` to the project's dependencies (it is imported at runtime, unlike the
 CLI, which `uvx` runs without installing).
@@ -55,22 +55,24 @@ CLI, which `uvx` runs without installing).
 call with an env check is fine — just make sure the deployed path is the HTTP
 one.
 
-### 3. Add the manifest
+### 3. Record whatever foro can't infer
 
 ```bash
-uvx foro init --yes    # no name argument = add foro.yaml to this repo
+uvx foro init --yes    # no name argument = configure the repo you are in
 ```
 
-It detects candidate entrypoints and the dependency manager, then fills in the
-name, Python version, and port from what it found. `--yes` accepts all of that
-without prompting — required here, since prompting a non-interactive run just
-aborts it. Detection uses the same signal the platform will use at deploy time,
-and the dependency manager is only written to `foro.yaml` when it disagrees
-with detection; if it guessed wrong, edit the file afterwards rather than
-dropping `--yes`. An existing `foro.yaml` is never overwritten under `--yes` —
-init prints the diff and stops, so reconcile it by hand.
+Most repos need nothing here: the platform reads the name, the Python version
+and the entry file straight out of `pyproject.toml`, so `foro init` usually
+prints "nothing to configure" and leaves the file alone. When an answer does
+differ from what deploy-time inference produces — an entry file under a name
+foro doesn't look for, a port your server can't move off, an ambiguous
+dependency manager — it writes just that into a `[tool.foro]` table. `--yes`
+accepts every detected answer without prompting, which is required here since
+prompting a non-interactive run just aborts it. An existing `[tool.foro]` table
+is never overwritten under `--yes`: init prints the diff and stops, so
+reconcile it by hand.
 
-Call `foro-docs.read_doc("foro-yaml")` for the current field reference rather
+Call `foro-docs.search_docs("project config")` for the current reference rather
 than reciting fields from memory.
 
 ### 4. Check, then prove it
