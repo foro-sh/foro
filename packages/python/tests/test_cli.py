@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import yaml
 from typer.testing import CliRunner
@@ -67,6 +69,21 @@ def logged_in(monkeypatch, tmp_path):
     path = _config.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump({"127.0.0.1:1": {"token": "foro_pat_" + "a" * 43, "user": "me"}}))
+    # write_text takes the default umask, which is usually group/world
+    # readable - narrow it so tests start from the secure baseline the real
+    # `save()` produces, and opt into the insecure case explicitly.
+    if os.name != "nt":
+        path.chmod(0o600)
+    return path
+
+
+@pytest.fixture
+def logged_out(monkeypatch, tmp_path):
+    """A machine that has never logged in to the host under test."""
+    monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
+    monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "config"))
 
 
 def test_with_token_does_not_lose_the_token_to_the_re_login_prompt(logged_in):
