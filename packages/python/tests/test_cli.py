@@ -212,3 +212,13 @@ def test_auth_logout_leaves_the_token_alone_when_declined(logged_in):
 
     assert result.exit_code == 1
     assert logged_in.exists()
+
+
+def test_auth_token_prints_exactly_the_stored_token(logged_in):
+    """Nothing else may reach stdout - this is meant to be safe to embed as
+    `$(foro auth token)` in a curl command, so a leaked warning line would
+    corrupt the header value."""
+    result = runner.invoke(app, ["auth", "token"])
+
+    assert result.exit_code == 0
+    assert result.stdout == "foro_pat_" + "a" * 43 + "\n"
