@@ -162,3 +162,33 @@ def test_auth_commands_require_a_login(logged_out, command):
 
     assert result.exit_code == 1
     assert "not logged in to 127.0.0.1:1" in result.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_auth_status_warns_when_config_file_is_insecure(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import Identity
+
+    logged_in.chmod(0o644)
+    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0
+    assert f"warning: {logged_in} is readable by other users - `chmod 600` it" in result.stdout
+    assert "✓ Logged in as me" in result.stdout
+    assert "Workspace: acme" in result.stdout
+
+
+def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeypatch):
+    """The negative half of the warning test above - without it, a warning
+    that always fires would still pass."""
+    import foro.cli as cli_module
+    from foro.auth import Identity
+
+    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0
+    assert "readable by other users" not in result.stdout
