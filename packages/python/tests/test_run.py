@@ -45,7 +45,7 @@ def test_run_defaults_to_port_8000_without_port_env(server_cls, monkeypatch):
 
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
-def test_run_reads_port_from_mcp_port_env(server_cls, monkeypatch):
+def test_run_reads_port_from_port_env(server_cls, monkeypatch):
     monkeypatch.setenv("PORT", "9001")
     server = server_cls()
 
