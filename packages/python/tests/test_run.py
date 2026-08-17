@@ -31,7 +31,7 @@ FLAVORS = [FakeStandaloneFastMCP, FakeMCPServerFastMCP, FakeLowLevelServer]
 
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
-def test_run_defaults_to_port_8000_without_mcp_port(server_cls, monkeypatch):
+def test_run_defaults_to_port_8000_without_port_env(server_cls, monkeypatch):
     monkeypatch.delenv("PORT", raising=False)
     server = server_cls()
 
