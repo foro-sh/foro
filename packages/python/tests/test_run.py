@@ -143,7 +143,7 @@ def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
         run(FakeStandaloneFastMCP(), port=bad)
 
 
-def test_a_non_numeric_mcp_port_names_the_variable(monkeypatch):
+def test_a_non_numeric_port_names_the_variable(monkeypatch):
     """It used to surface as `invalid literal for int() with base 10`."""
     monkeypatch.setenv("PORT", "eight thousand")
 
