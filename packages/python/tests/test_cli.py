@@ -151,3 +151,14 @@ def test_the_device_flow_still_asks_before_replacing_a_login(logged_in):
 
     assert result.exit_code == 1
     assert "Already logged in" in result.output
+
+
+@pytest.mark.parametrize("command", [["auth", "status"], ["auth", "logout"], ["auth", "token"]])
+def test_auth_commands_require_a_login(logged_out, command):
+    """status/logout/token all gate on the same _require_credentials() check,
+    so a missing login must stop every one of them before they touch the
+    network or the filesystem."""
+    result = runner.invoke(app, command)
+
+    assert result.exit_code == 1
+    assert "not logged in to 127.0.0.1:1" in result.stdout
