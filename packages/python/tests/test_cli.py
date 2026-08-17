@@ -192,3 +192,23 @@ def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeyp
 
     assert result.exit_code == 0
     assert "readable by other users" not in result.stdout
+
+
+def test_auth_logout_deletes_the_local_token_when_revoke_fails(logged_in):
+    """The token must not be stranded on disk just because the host it came
+    from is unreachable or already knows the token is dead - offline or
+    already-revoked, the local file still has to go."""
+    result = runner.invoke(app, ["auth", "logout"], input="y\n")
+
+    assert result.exit_code == 0
+    assert "could not revoke server-side" in result.output
+    assert "✓ Logged out locally" in result.output
+    assert _config.load("127.0.0.1:1") is None
+    assert not logged_in.exists()
+
+
+def test_auth_logout_leaves_the_token_alone_when_declined(logged_in):
+    result = runner.invoke(app, ["auth", "logout"], input="n\n")
+
+    assert result.exit_code == 1
+    assert logged_in.exists()
