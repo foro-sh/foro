@@ -65,3 +65,16 @@ def test_real_lockfile_wins_over_bun_lock(tmp_path):
     (tmp_path / "package-lock.json").write_text("{}")
 
     assert detect_dependency_manager(tmp_path) == "npm"
+
+
+# --- override ---------------------------------------------------------------
+
+
+def test_override_wins_over_disk_contents(tmp_path):
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+
+    assert detect_dependency_manager(tmp_path, override="yarn") == "yarn"
+
+
+def test_override_applies_even_on_an_empty_directory(tmp_path):
+    assert detect_dependency_manager(tmp_path, override="npm") == "npm"
