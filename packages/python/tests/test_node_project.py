@@ -41,3 +41,27 @@ def test_bare_package_json_falls_back_to_npm(tmp_path):
 def test_raises_when_nothing_recognisable_present(tmp_path):
     with pytest.raises(NodeDependencyManagerError, match="No recognised Node project"):
         detect_dependency_manager(tmp_path)
+
+
+# --- bun rejection ---------------------------------------------------------
+
+
+def test_rejects_bun_lock(tmp_path):
+    (tmp_path / "bun.lock").write_text("")
+
+    with pytest.raises(NodeDependencyManagerError, match="not supported yet"):
+        detect_dependency_manager(tmp_path)
+
+
+def test_rejects_bun_lockb(tmp_path):
+    (tmp_path / "bun.lockb").write_bytes(b"")
+
+    with pytest.raises(NodeDependencyManagerError, match="not supported yet"):
+        detect_dependency_manager(tmp_path)
+
+
+def test_real_lockfile_wins_over_bun_lock(tmp_path):
+    (tmp_path / "bun.lock").write_text("")
+    (tmp_path / "package-lock.json").write_text("{}")
+
+    assert detect_dependency_manager(tmp_path) == "npm"
