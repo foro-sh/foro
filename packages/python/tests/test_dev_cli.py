@@ -87,3 +87,14 @@ def test_ctrl_c_kills_a_server_that_ignores_terminate(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert fake.terminated
     assert fake.killed
+
+
+def test_dev_lists_no_tools_as_none(tmp_path, monkeypatch):
+    fake = _FakeProcess()
+    monkeypatch.setattr(
+        cli_module, "run_dev", lambda path: (fake, DevResult(port=8000, tool_names=[]))
+    )
+
+    result = runner.invoke(app, ["dev", str(tmp_path)])
+
+    assert "Tools: (none)" in result.stdout
