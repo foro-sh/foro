@@ -71,3 +71,19 @@ def test_ctrl_c_terminates_the_server(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert fake.terminated
     assert not fake.killed
+
+
+def test_ctrl_c_kills_a_server_that_ignores_terminate(tmp_path, monkeypatch):
+    """The leak this path exists to prevent: without the kill() fallback, a
+    child that ignores terminate() survives Ctrl+C and holds its port, which
+    trips dev.py's own "port already in use" guard on the next `foro dev`."""
+    fake = _FakeProcess(kill_needed=True)
+    monkeypatch.setattr(
+        cli_module, "run_dev", lambda path: (fake, DevResult(port=8000, tool_names=["add"]))
+    )
+
+    result = runner.invoke(app, ["dev", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert fake.terminated
+    assert fake.killed
