@@ -4,7 +4,7 @@ Take a repo from an empty folder to a deployed MCP server on
 [foro.sh](https://foro.sh) without leaving Codex. The Codex counterpart of the
 [Claude Code plugin](../claude-code/README.md) — same payload, Codex's format.
 
-- **The foro.sh docs MCP server** (`cosmic-canyon-7ilj.foro.sh`, public, no auth) —
+- **The foro.sh docs MCP server** (`docs.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
 - **Four skills** covering both ways in (a new project, or one that already
@@ -21,7 +21,7 @@ it's in the shared ChatGPT + Codex directory, install it from there instead.
 
 ### `foro-docs` MCP server (`.mcp.json`)
 
-A streamable-HTTP server at `https://cosmic-canyon-7ilj.foro.sh/mcp`, no auth — it's
+A streamable-HTTP server at `https://docs.foro.sh/mcp`, no auth — it's
 read-only documentation, so the plugin carries no credential. It exposes:
 
 - `list_docs()` — the available doc slugs and titles
