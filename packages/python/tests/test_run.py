@@ -31,7 +31,7 @@ FLAVORS = [FakeStandaloneFastMCP, FakeMCPServerFastMCP, FakeLowLevelServer]
 
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
-def test_run_defaults_to_port_8000_without_mcp_port(server_cls, monkeypatch):
+def test_run_defaults_to_port_8000_without_port_env(server_cls, monkeypatch):
     monkeypatch.delenv("PORT", raising=False)
     server = server_cls()
 
@@ -45,7 +45,7 @@ def test_run_defaults_to_port_8000_without_mcp_port(server_cls, monkeypatch):
 
 
 @pytest.mark.parametrize("server_cls", FLAVORS)
-def test_run_reads_port_from_mcp_port_env(server_cls, monkeypatch):
+def test_run_reads_port_from_port_env(server_cls, monkeypatch):
     monkeypatch.setenv("PORT", "9001")
     server = server_cls()
 
@@ -143,7 +143,7 @@ def test_a_port_outside_the_valid_range_is_refused(bad, monkeypatch):
         run(FakeStandaloneFastMCP(), port=bad)
 
 
-def test_a_non_numeric_mcp_port_names_the_variable(monkeypatch):
+def test_a_non_numeric_port_names_the_variable(monkeypatch):
     """It used to surface as `invalid literal for int() with base 10`."""
     monkeypatch.setenv("PORT", "eight thousand")
 
