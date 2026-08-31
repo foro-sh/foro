@@ -4,7 +4,7 @@ Take a repo from an empty folder to a deployed MCP server on
 [foro.sh](https://foro.sh) without leaving your agent. The plugin bundles two
 things that already exist but that agents can't reach on their own:
 
-- **The foro.sh docs MCP server** (`cosmic-canyon-7ilj.foro.sh`, public, no auth) —
+- **The foro.sh docs MCP server** (`docs.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
 - **Four skills** covering both ways in (a new project, or one that already
@@ -28,7 +28,7 @@ claude --plugin-dir ./plugins/claude-code
 
 ### `foro-docs` MCP server (`.mcp.json`)
 
-Points at the public docs MCP at `https://cosmic-canyon-7ilj.foro.sh/mcp` (streamable HTTP,
+Points at the public docs MCP at `https://docs.foro.sh/mcp` (streamable HTTP,
 no auth — it's read-only documentation, so the plugin carries no credential).
 It exposes:
 
