@@ -103,3 +103,5 @@ scaffolded tool. If it doesn't respond, it isn't done; read the `foro check` /
 Next: the `deploy-to-foro` skill pushes this to GitHub and gets it live. Before
 replacing the scaffolded example with real tools, the `design-mcp-tools` skill
 covers what makes them cheap to carry and easy for a model to pick correctly.
+If the server should answer with an interface rather than JSON, a card or a
+list rendered in the chat, that is the `design-mcp-view` skill.

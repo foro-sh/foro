@@ -7,9 +7,9 @@ things that already exist but that agents can't reach on their own:
 - **The foro.sh docs MCP server** (`cosmic-canyon-7ilj.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
-- **Four skills** covering both ways in (a new project, or one that already
-  exists), the deploy itself, and the tool design that decides what a server
-  costs to use.
+- **Five skills** covering both ways in (a new project, or one that already
+  exists), the deploy itself, the tool design that decides what a server costs
+  to use, and the React view that turns a tool result into an interface.
 
 ## Install
 
@@ -67,6 +67,11 @@ Skills are namespaced by the plugin name:
   size, and tool count are a standing cost on every message. Covers the levers
   in payoff order and ends at the dashboard's real numbers rather than a
   feeling.
+- **`/foro:design-mcp-view`** — return an interface, not JSON. A React view in
+  `views/<name>.tsx`, bundled to one committed HTML file that a `ui://` resource
+  serves, driven by however many tools share that URI. Covers what the sandbox
+  denies (no `localStorage`, no secrets, no navigation), how the view and the
+  model stay in step, and driving it on the Apps tab before calling it done.
 
 ## Requirements
 
