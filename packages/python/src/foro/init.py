@@ -337,6 +337,8 @@ __pycache__/
 .env
 .pytest_cache/
 .DS_Store
+# Which foro.sh project this directory deploys to - local, and per-clone.
+.foro/
 '''
 
 _ENV_EXAMPLE_TEMPLATE = '''# Copy to .env for local development - foro dev loads it automatically.

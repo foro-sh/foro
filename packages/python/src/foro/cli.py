@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
 import subprocess
 import sys
+import threading
 import webbrowser
 from importlib.metadata import version
 from pathlib import Path
@@ -12,8 +14,9 @@ from typing import Optional
 
 import typer
 
-from foro import _config
+from foro import _api, _config, _project_link, projects
 from foro._api import ApiError
+from foro._archive import ArchiveError
 from foro._manifest import (
     DEFAULT_PORT,
     DEFAULT_RUNTIME,
@@ -39,6 +42,11 @@ from foro.auth import (
     start_device_flow,
 )
 from foro.check import run_check
+from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
+from foro.deploy import deploy as deploy_project
+from foro.logs import latest_deployment_id, read_deployment, read_runtime, stream_runtime
+from foro.projects import ProjectError, get_project, list_deployments, list_projects
+from foro.projects import link as link_project
 from foro.dev import DevError, run_dev
 from foro._proc import MissingToolError
 from foro.init import (
@@ -535,3 +543,279 @@ def auth_token() -> None:
     """Print the raw token, for `curl -H "Authorization: Bearer $(foro auth token)"`."""
     _, creds = _require_credentials()
     typer.echo(creds.token)
+
+
+
+
+def _fail(err: ApiError, action: str) -> typer.Exit:
+    typer.secho(f"✗ {_api.explain(err, action=action)}", fg=typer.colors.RED)
+    return typer.Exit(code=1)
+
+
+def _resolve(path: Path, project: str | None) -> tuple[str, str, str]:
+    """Every project command needs the same three things: a host, a token, and
+    the slug this directory acts on."""
+    host, creds = _require_credentials()
+    try:
+        return host, creds.token, projects.resolve_slug(path, host, project)
+    except ProjectError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+
+@app.command()
+def deploy(
+    path: Path = typer.Argument(Path("."), help="Repo directory to deploy (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Deploy to this slug."),
+    upload: bool = typer.Option(False, "--upload", help="Force uploading the working tree."),
+    repo: bool = typer.Option(False, "--repo", help="Force building from the linked repo branch."),
+    detach: bool = typer.Option(False, "--detach", "-d", help="Don't stream; print the URL and exit."),
+    skip_check: bool = typer.Option(False, "--skip-check", help="Deploy without running foro check."),
+) -> None:
+    """Deploy this directory to foro.sh and stream the build."""
+    if upload and repo:
+        typer.secho("✗ --upload and --repo are mutually exclusive", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    host, creds = _require_credentials()
+
+    # Never upload something that can't build - the platform would only tell
+    # us the same thing 60 seconds later, from further away.
+    if not skip_check and not repo:
+        result = run_check(path)
+        if not result.ok:
+            typer.secho(f"✗ {result.message} [{result.reason}]", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+
+    try:
+        started = deploy_project(
+            path,
+            host,
+            creds.token,
+            slug=project,
+            force_upload=upload,
+            force_repo=repo,
+            on_step=lambda message: typer.echo(f"- {message}"),
+        )
+    except (DeployError, ArchiveError) as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    except ApiError as err:
+        raise _fail(err, "deploy") from None
+
+    if started.created:
+        typer.echo(f"- created {started.slug}")
+        _offer_gitignore(path)
+
+    typer.echo(f"- deploying {started.slug} ({started.deployment_id[:8]})")
+    if detach:
+        typer.echo(f"  {started.url}")
+        return
+
+    _stream_deploy(host, creds.token, started)
+
+
+def _offer_gitignore(repo_dir: Path) -> None:
+    if _project_link.is_gitignored(repo_dir):
+        return
+    if typer.confirm(f"Add {_project_link.GITIGNORE_ENTRY} to .gitignore?", default=True):
+        _project_link.add_to_gitignore(repo_dir)
+
+
+def _stream_deploy(host: str, token: str, started) -> None:
+    """The deploy narrative in the foreground, raw build output behind it.
+
+    Two channels, so two streams: the build log is where a failure's actual
+    cause usually is, and waiting for the deploy stream to finish before
+    showing it would defeat the point of watching.
+    """
+    build_lines: list[str] = []
+
+    def pump_build() -> None:
+        try:
+            for entry in stream_build(host, token, started.slug, started.deployment_id):
+                line = entry.get("line", "")
+                build_lines.append(line)
+                typer.secho(f"  │ {line}", dim=True)
+        except ApiError:
+            # The build channel is a nicety; losing it must not fail a deploy
+            # that the deploy channel is still reporting on truthfully.
+            pass
+
+    pump = threading.Thread(target=pump_build, daemon=True)
+    pump.start()
+
+    try:
+        for entry in stream_deploy(host, token, started.slug, started.deployment_id):
+            typer.echo(entry.get("line", ""))
+    except KeyboardInterrupt:
+        typer.echo("")
+        typer.secho(
+            f"detached - the deploy is still running. `foro logs --deploy {started.deployment_id[:8]}` to follow it.",
+            fg=typer.colors.YELLOW,
+        )
+        raise typer.Exit(code=0) from None
+    except ApiError as err:
+        raise _fail(err, "stream the deploy") from None
+
+    pump.join(timeout=2)
+
+    try:
+        final = get_deployment(host, token, started.slug, started.deployment_id)
+    except ApiError as err:
+        raise _fail(err, "read the deployment") from None
+
+    if final["status"] == "live":
+        typer.secho(f"✓ live at {started.url}", fg=typer.colors.GREEN)
+        return
+
+    typer.secho(f"✗ deploy {final['status']}", fg=typer.colors.RED)
+    if final.get("error_message"):
+        typer.echo(f"  {final['error_message']}")
+    if final.get("reason"):
+        typer.echo(f"  reason: {final['reason']}")
+    raise typer.Exit(code=1)
+
+
+@app.command()
+def logs(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's logs."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Stream live runtime logs."),
+    deploy_log: bool = typer.Option(False, "--deploy", help="Read a deployment's deploy log."),
+    build_log: bool = typer.Option(False, "--build", help="Read a deployment's build log."),
+    deployment: Optional[str] = typer.Option(
+        None, "--deployment", help="Which deployment (default: the most recent)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="One JSON object per line, for jq."),
+) -> None:
+    """Show a project's runtime logs, or one deployment's deploy/build log."""
+    if deploy_log and build_log:
+        typer.secho("✗ --deploy and --build are mutually exclusive", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    host, token, slug = _resolve(path, project)
+
+    def emit(entry: dict) -> None:
+        typer.echo(json.dumps(entry) if as_json else entry.get("line", ""))
+
+    try:
+        if deploy_log or build_log:
+            deployment_id = deployment or latest_deployment_id(host, token, slug)
+            if not deployment_id:
+                typer.secho(f"✗ {slug} has no deployments yet", fg=typer.colors.RED)
+                raise typer.Exit(code=1)
+            kind = "build" if build_log else "deploy"
+            for entry in read_deployment(host, token, slug, deployment_id, kind):
+                emit(entry)
+            return
+
+        if follow:
+            try:
+                for entry in stream_runtime(host, token, slug):
+                    emit(entry)
+            except KeyboardInterrupt:
+                typer.echo("")
+            return
+
+        lines = read_runtime(host, token, slug)
+        if not lines:
+            typer.echo(
+                "no stored logs - retention is plan-gated (24h on Free), so this is "
+                "normal for a quiet or recently deployed server"
+            )
+            return
+        for entry in lines:
+            emit(entry)
+    except ApiError as err:
+        raise _fail(err, "read logs") from None
+
+
+# No `no_args_is_help`: bare `foro projects` is the list, not a help screen.
+projects_app = typer.Typer(help="Inspect your foro.sh projects.")
+app.add_typer(projects_app, name="projects")
+
+
+@projects_app.callback(invoke_without_command=True)
+def projects_default(ctx: typer.Context) -> None:
+    """List every project in the token's workspace."""
+    if ctx.invoked_subcommand is not None:
+        return
+    host, creds = _require_credentials()
+    try:
+        rows = list_projects(host, creds.token)
+    except ApiError as err:
+        raise _fail(err, "list projects") from None
+
+    if not rows:
+        typer.echo("no projects yet - `foro deploy` creates one from this directory")
+        return
+    for row in rows:
+        status = "building" if row.get("building") else row["status"]
+        typer.echo(f"{row['slug']:<28} {status:<10} {row['url']}")
+
+
+@projects_app.command("show")
+def projects_show(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Show this slug."),
+) -> None:
+    """Show one project, defaulting to the one this directory is linked to."""
+    host, token, slug = _resolve(path, project)
+    try:
+        row = get_project(host, token, slug)
+        history = list_deployments(host, token, slug)
+    except ApiError as err:
+        raise _fail(err, "read the project") from None
+
+    typer.echo(row["slug"])
+    typer.echo(f"  Name:    {row.get('name') or '(none)'}")
+    typer.echo(f"  Status:  {'building' if row.get('building') else row['status']}")
+    typer.echo(f"  Source:  {row['source']}")
+    typer.echo(f"  URL:     {row['url']}")
+    if history:
+        last = history[0]
+        typer.echo(f"  Last deploy: {last['status']} at {last['created_at']} ({last['id'][:8]})")
+
+
+@app.command()
+def link(
+    slug: str = typer.Argument(..., help="Slug of an existing project to adopt."),
+    path: Path = typer.Argument(Path("."), help="Directory to link (default: current)."),
+) -> None:
+    """Point this directory at a project created in the dashboard."""
+    host, creds = _require_credentials()
+    try:
+        row = link_project(path, host, creds.token, slug)
+    except ApiError as err:
+        raise _fail(err, "link the project") from None
+
+    typer.secho(f"✓ linked to {row['slug']} ({row['url']})", fg=typer.colors.GREEN)
+    _offer_gitignore(path)
+
+
+@app.command()
+def unlink(
+    path: Path = typer.Argument(Path("."), help="Directory to unlink (default: current)."),
+) -> None:
+    """Forget which project this directory deploys to."""
+    if _project_link.delete(path):
+        typer.secho("✓ unlinked", fg=typer.colors.GREEN)
+        return
+    typer.echo("this directory wasn't linked")
+
+
+@app.command("open")
+def open_project(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Open this slug."),
+) -> None:
+    """Open the deployed URL in a browser."""
+    host, token, slug = _resolve(path, project)
+    try:
+        row = get_project(host, token, slug)
+    except ApiError as err:
+        raise _fail(err, "read the project") from None
+
+    typer.echo(row["url"])
+    webbrowser.open(row["url"])
