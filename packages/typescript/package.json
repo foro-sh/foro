@@ -1,6 +1,6 @@
 {
     "name": "@foro-sh/foro",
-    "version": "0.8.1",
+    "version": "0.11.0",
     "description": "TypeScript SDK for Foro",
     "type": "module",
     "main": "dist/index.js",
@@ -18,12 +18,13 @@
         }
     },
     "files": [
-        "dist"
+        "dist",
+        "!dist/**/*.test.*"
     ],
     "scripts": {
         "build": "node scripts/generate-manifest-cases.mjs && tsc -p tsconfig.json",
         "prepublishOnly": "npm run build",
-        "test": "node --test dist/**/*.test.js"
+        "test": "node --test dist/*.test.js"
     },
     "publishConfig": {
         "access": "public"
@@ -47,6 +48,7 @@
         "node": ">=18"
     },
     "devDependencies": {
+        "@types/node": "^20.11.0",
         "typescript": "^5.6.3"
     }
 }

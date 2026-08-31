@@ -1,17 +1,14 @@
 name: Tests
 
-# Until this existed, nothing ran the test suites - the only PR checks were
-# commitlint and the plugin-skills diff, so a release could publish to PyPI
-# and npm with every test red and no signal anywhere.
-
+# No `push` trigger on purpose: semantic-release.yml calls this workflow and
+# gates the release on it, so a push-triggered copy would only duplicate CI
+# without being able to stop a publish.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
 
-# A superseded PR run tells us nothing, so cancel it. Pushes to main are left
-# alone: those runs gate a release, and cancelling one would hide the failure
-# that should have stopped it.
+# Cancel superseded PR runs, never release-gating ones - `github.event_name`
+# is the caller's event, so a merge to main reads as `push` here.
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -21,28 +18,36 @@ permissions:
 
 jobs:
   python:
-    name: Python tests
+    name: Python tests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    # The suite starts real servers and waits on ports, so a hang is a
-    # plausible failure mode. Fail in minutes rather than burning the
-    # six-hour default.
+    # The suite starts real servers and waits on ports, so a hang is
+    # plausible. Fail in minutes, not the six-hour default.
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor and ceiling of `requires-python`. Testing only 3.12 is how
+        # BaseExceptionGroup shipped as a NameError on every 3.10 handshake.
+        python-version: ["3.10", "3.13"]
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
-      - uses: astral-sh/setup-uv@d8db0a86d3d88f3017a4e6b8a1e2b234e7a0a1b5 # v4.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       # `foro check` rejects a repo whose uv.lock has drifted from its
       # pyproject.toml, so this SDK should hold itself to it. --frozen also
       # keeps the run honest: without it uv would quietly relock and the
       # tests would pass against dependencies nobody committed.
       - name: Install locked dependencies
+        # Without this uv picks its own interpreter and the matrix collapses.
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
         run: uv sync --frozen --dev
         working-directory: packages/python
 
@@ -77,27 +82,38 @@ jobs:
         working-directory: packages/python
 
   typescript:
-    name: TypeScript tests
+    name: TypeScript tests (node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor `engines` declares, plus the version publishing runs on.
+        # node:test differs between them: globs need 22, and `--test <dir>`
+        # exits 0 on 22+ even when a test fails.
+        node-version: [18, 22]
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - run: npm ci
         working-directory: packages/typescript
 
-      # `test` runs the compiled output (node --test dist/**/*.test.js), so
-      # the build is a prerequisite, not just an extra check. It currently
-      # matches no files and passes trivially - that's the point of wiring it
-      # up now, so the first real .test.ts is run rather than ignored.
+      # `test` runs the compiled output, so the build is a prerequisite.
       - run: npm run build
         working-directory: packages/typescript
 
-      - run: npm test
+      # A test command matching nothing exits 0 and reads like a passing run.
+      # Catches a zero count only; the version matrix covers the subtler case.
+      - name: Run tests and confirm they were not vacuous
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+          grep -qE '^(# |ℹ )pass [1-9]' test-output.txt \
+            || { echo "::error::npm test reported no passing tests"; exit 1; }
         working-directory: packages/typescript

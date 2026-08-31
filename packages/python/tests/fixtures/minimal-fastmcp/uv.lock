@@ -400,7 +400,7 @@ server = [
 
 [[package]]
 name = "foro"
-version = "0.8.1"
+version = "0.11.0"
 source = { editable = "../../../" }
 dependencies = [
     { name = "anyio" },
@@ -413,9 +413,11 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.0" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.0" },
     { name = "mcp", specifier = ">=1.24,<2.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.15" },
 ]
 provides-extras = ["cli"]

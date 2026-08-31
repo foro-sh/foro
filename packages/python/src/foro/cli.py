@@ -19,14 +19,15 @@ from foro._api import ApiError
 from foro._archive import ArchiveError
 from foro._manifest import (
     DEFAULT_PORT,
-    DEFAULT_PYTHON_VERSION,
+    DEFAULT_RUNTIME,
+    DEFAULT_RUNTIME_VERSIONS,
     MAX_PORT,
     MIN_PORT,
     NAME_RE,
-    PYTHON_VERSIONS,
+    RUNTIME_VERSIONS,
     SIDECAR_PORT,
     ManifestError,
-    is_valid_entrypoint,
+    is_valid_repo_path,
 )
 from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
 from foro._mcp import HandshakeError, handshake, normalize_url
@@ -47,14 +48,18 @@ from foro.logs import latest_deployment_id, read_deployment, read_runtime, strea
 from foro.projects import ProjectError, get_project, list_deployments, list_projects
 from foro.projects import link as link_project
 from foro.dev import DevError, run_dev
+from foro._proc import MissingToolError
 from foro.init import (
+    GitInitError,
     ManifestFields,
+    ScaffoldError,
     detect_entrypoint_candidates,
     detect_existing_dependency_manager,
-    existing_manifest_diff,
+    existing_foro_table_diff,
     init_git_repo,
     scaffold_new,
-    write_manifest,
+    MissingPyprojectError,
+    write_foro_table,
 )
 
 app = typer.Typer(
@@ -138,7 +143,7 @@ def _prompt_name(default: str) -> str:
 def _prompt_entrypoint(default: str) -> str:
     while True:
         value = _prompt("Entrypoint", default=default)
-        if value.endswith(".py") and is_valid_entrypoint(value):
+        if value.endswith(".py") and is_valid_repo_path(value):
             return value
         typer.secho(
             "Entrypoint must be a relative .py path within the project "
@@ -147,12 +152,16 @@ def _prompt_entrypoint(default: str) -> str:
         )
 
 
-def _prompt_python_version(default: str) -> str:
+def _prompt_runtime_version(runtime: str, default: str) -> str:
+    # Versions are allowlisted per runtime, so the prompt is too. There is no
+    # runtime prompt yet: with one runtime, asking would be a question with a
+    # single valid answer.
+    versions = RUNTIME_VERSIONS[runtime]
     while True:
-        value = _prompt(f"Python version ({'/'.join(PYTHON_VERSIONS)})", default=default)
-        if value in PYTHON_VERSIONS:
+        value = _prompt(f"{runtime.capitalize()} version ({'/'.join(versions)})", default=default)
+        if value in versions:
             return value
-        typer.secho(f"Must be one of {', '.join(PYTHON_VERSIONS)}", fg=typer.colors.RED)
+        typer.secho(f"Must be one of {', '.join(versions)}", fg=typer.colors.RED)
 
 
 def _prompt_dependency_manager(default: str) -> str:
@@ -179,8 +188,8 @@ def _prompt_port(default: int) -> int:
 def init(
     name: Optional[str] = typer.Argument(
         None,
-        help="Directory to scaffold a new project into. Omit to add foro.yaml "
-        "to the current directory instead.",
+        help="Directory to scaffold a new project into. Omit to record the "
+        "current directory\'s foro settings in its pyproject.toml instead.",
     ),
     yes: bool = typer.Option(
         False,
@@ -188,10 +197,10 @@ def init(
         "-y",
         help="Accept every default instead of prompting, so init runs "
         "unattended (in CI, or when an agent drives it). An existing "
-        "foro.yaml is still never overwritten.",
+        "[tool.foro] table is still never overwritten.",
     ),
 ) -> None:
-    """Scaffold a new MCP server, or add foro.yaml to an existing one."""
+    """Scaffold a new MCP server, or record an existing one\'s foro settings."""
     global _assume_yes
     _assume_yes = yes
 
@@ -205,21 +214,28 @@ def _init_from_scratch(target: Path) -> None:
     if target.exists() and any(target.iterdir()):
         typer.secho(
             f"✗ {target} already exists and is not empty - run `foro init` with no "
-            "argument inside it to add just a foro.yaml",
+            "argument inside it to configure the project that is already there",
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
 
     name = _prompt_name(_sanitize_name(target.name))
-    python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
+    runtime_version = _prompt_runtime_version(DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME])
     port = _prompt_port(DEFAULT_PORT)
     git_init = _confirm("Initialize a git repo here?", default=True)
 
     # Fixed, opinionated structure (app.py + tools/) - not a free-form
     # filename choice like existing-repo mode's entrypoint. See
     # scaffold_new's docstring.
-    fields = ManifestFields(name=name, entrypoint="server.py", python_version=python_version, port=port)
-    scaffold_new(target, fields, git_init=git_init)
+    fields = ManifestFields(name=name, entrypoint="server.py", runtime_version=runtime_version, port=port)
+    try:
+        scaffold_new(target, fields, git_init=git_init)
+    except ScaffoldError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    except GitInitError as err:
+        # The project is written and valid; only the repo is missing.
+        typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
     typer.echo(f"  cd {target} && foro dev")
@@ -239,13 +255,13 @@ def _init_existing(dir_path: Path) -> None:
     dependency_manager = _prompt_dependency_manager(detected_manager or "uv")
 
     name = _prompt_name(_sanitize_name(dir_path.resolve().name))
-    python_version = _prompt_python_version(DEFAULT_PYTHON_VERSION)
+    runtime_version = _prompt_runtime_version(DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME])
     port = _prompt_port(DEFAULT_PORT)
 
     fields = ManifestFields(
         name=name,
         entrypoint=entrypoint,
-        python_version=python_version,
+        runtime_version=runtime_version,
         port=port,
         # Only recorded as an explicit override when it differs from what
         # the platform would auto-detect anyway (or when nothing could be
@@ -253,21 +269,35 @@ def _init_existing(dir_path: Path) -> None:
         dependency_manager=dependency_manager if dependency_manager != detected_manager else None,
     )
 
-    diff = existing_manifest_diff(dir_path, fields)
+    diff = existing_foro_table_diff(dir_path, fields)
     if diff:
-        typer.echo("foro.yaml already exists. Diff:")
+        typer.echo("pyproject.toml already has a [tool.foro] table. Diff:")
         typer.echo(diff)
         if not _confirm("Overwrite?", default=False):
             typer.echo("Aborted.")
             raise typer.Exit(code=1)
 
-    write_manifest(dir_path, fields)
-    typer.secho(f"✓ wrote {dir_path / 'foro.yaml'}", fg=typer.colors.GREEN)
+    try:
+        wrote = write_foro_table(dir_path, fields)
+    except MissingPyprojectError as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+    if wrote:
+        typer.secho(f"✓ updated {dir_path / 'pyproject.toml'}", fg=typer.colors.GREEN)
+    else:
+        # Nothing to write is the good outcome, not a no-op worth apologising
+        # for: the platform infers every answer given.
+        typer.secho("✓ nothing to configure - this project deploys as it is", fg=typer.colors.GREEN)
 
     # Not already a repo, and deploying to foro.sh means pushing to GitHub -
     # worth asking here too, not just in from-scratch mode.
     if not (dir_path / ".git").exists() and _confirm("Initialize a git repo here?", default=True):
-        init_git_repo(dir_path)
+        try:
+            init_git_repo(dir_path)
+        except GitInitError as err:
+            # The config is already written, which is all this mode promises.
+            typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
 
 @app.command()
@@ -280,7 +310,7 @@ def dev(
     except ManifestError as err:
         typer.secho(f"✗ {err} [{err.reason}]", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    except DevError as err:
+    except (DevError, MissingToolError) as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
 
@@ -340,7 +370,9 @@ def auth_login(
     with_token: bool = typer.Option(
         False,
         "--with-token",
-        help="Read a token from stdin instead of running the device flow, for CI.",
+        help="Read a token from stdin instead of running the device flow, for CI. "
+        "Implies --force: stdin is the token, so there is nothing left to answer "
+        "a confirmation prompt with.",
     ),
     force: bool = typer.Option(False, "--force", "-f", help="Replace an existing login without asking."),
 ) -> None:
@@ -354,25 +386,17 @@ def auth_login(
         )
         raise typer.Exit(code=1)
 
+    # Read stdin before anything can prompt on it - the confirm below would
+    # otherwise eat the token as its answer.
+    token = _read_token_from_stdin() if with_token else None
+
     existing = _config.load(host)
-    if existing and not force:
+    if existing and not force and not with_token:
         who = f" as {existing.user}" if existing.user else ""
         if not typer.confirm(f"Already logged in to {host}{who}. Log in again?", default=False):
             raise typer.Exit(code=1)
 
-    if with_token:
-        token = sys.stdin.read().strip()
-        if not token:
-            typer.secho("✗ no token on stdin", fg=typer.colors.RED)
-            raise typer.Exit(code=1)
-        if not TOKEN_RE.match(token):
-            typer.secho(
-                f"✗ that is not a foro token - expected {TOKEN_PREFIX} "
-                "followed by 43 characters",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(code=1)
-    else:
+    if token is None:
         token = _run_device_flow(host)
 
     try:
@@ -389,6 +413,29 @@ def auth_login(
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
 
 
+def _read_token_from_stdin() -> str:
+    token = sys.stdin.read().strip()
+    if not token:
+        typer.secho("✗ no token on stdin", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if not TOKEN_RE.match(token):
+        typer.secho(
+            f"✗ that is not a foro token - expected {TOKEN_PREFIX} followed by 43 characters",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    return token
+
+
+def _open_browser(url: str) -> None:
+    """Best effort - it raises on a box with no browser, which is exactly
+    where the printed URL is the point."""
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
 def _run_device_flow(host: str) -> str:
     try:
         grant = start_device_flow(host, label=socket.gethostname())
@@ -397,10 +444,24 @@ def _run_device_flow(host: str) -> str:
         raise typer.Exit(code=1) from None
 
     typer.secho(f"! First copy your one-time code: {grant.user_code}", fg=typer.colors.YELLOW)
-    typer.echo(f"Press Enter to open {host} in your browser... (or paste {grant.verification_uri_complete})")
+    interactive = sys.stdin.isatty()
+    if interactive:
+        typer.echo(
+            f"Press Enter to open {host} in your browser... "
+            f"(or paste {grant.verification_uri_complete})"
+        )
+    else:
+        # No terminal to press Enter on. The grant still works from any
+        # browser, so print the URL and poll rather than dying on EOFError.
+        typer.echo(f"Open this to authorize: {grant.verification_uri_complete}")
     try:
-        input()
-        webbrowser.open(grant.verification_uri_complete)
+        if interactive:
+            try:
+                input()
+            except EOFError:
+                # stdin was a tty when asked and closed underneath us.
+                typer.echo("")
+            _open_browser(grant.verification_uri_complete)
 
         # ponytail: a redrawn line, not a spinner library - it has to read as
         # progress rather than a hang, and that's all it takes. Skipped off a

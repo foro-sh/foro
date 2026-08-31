@@ -10,6 +10,17 @@ drift into disagreeing about what "working" means.
 
 from __future__ import annotations
 
+import sys
+import urllib.parse
+
+if sys.version_info < (3, 11):
+    # `BaseExceptionGroup` is a builtin only from 3.11. Below that the group
+    # anyio's task group raises is the `exceptiongroup` backport's, and the
+    # bare builtin name in _root_cause is a NameError - which turned every
+    # failed handshake on 3.10 into a traceback instead of a HandshakeError,
+    # on a floor pyproject.toml declares as supported.
+    from exceptiongroup import BaseExceptionGroup
+
 # A deployed server is a network round trip away and may be cold-starting;
 # generous enough for that, short enough that a hung endpoint still fails.
 DEFAULT_TIMEOUT = 30.0
@@ -63,10 +74,16 @@ def local_url(port: int) -> str:
 
 def normalize_url(raw: str) -> str:
     """Accept what a user actually has in hand - the URL `foro deploy` printed
-    (`https://<slug>.foro.sh`) - and point it at the MCP path."""
+    (`https://<slug>.foro.sh`) - and point it at the MCP path.
+
+    Only a URL with no path of its own gets `/mcp` appended - a path that is
+    already there is the one the user means.
+    """
     url = raw.strip().rstrip("/")
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
-    if not url.endswith("/mcp"):
-        url = f"{url}/mcp"
+
+    parts = urllib.parse.urlsplit(url)
+    if parts.path in ("", "/"):
+        return urllib.parse.urlunsplit(parts._replace(path="/mcp"))
     return url

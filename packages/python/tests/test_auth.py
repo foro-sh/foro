@@ -101,8 +101,9 @@ def test_slow_down_adopts_the_interval_the_server_sends(server, no_sleeping):
     auth.poll_for_token(host, _grant(interval=5))
 
     # 12, not 5 + SLOW_DOWN_STEP: the server is enforcing its own cadence and
-    # says which one, so a local guess is not the number to poll on.
-    assert no_sleeping == [5.0, 12.0]
+    # says which one, so a local guess is not the number to poll on. One
+    # sleep, not two - the first request goes out before any waiting.
+    assert no_sleeping == [12.0]
 
 
 def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_sleeping):
@@ -114,7 +115,34 @@ def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_s
 
     auth.poll_for_token(host, _grant(interval=5))
 
-    assert no_sleeping == [5.0, 5.0 + auth.SLOW_DOWN_STEP]
+    assert no_sleeping == [5.0 + auth.SLOW_DOWN_STEP]
+
+
+def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
+    """The human is sent to the browser before this loop starts, so the
+    approval is often already in when it runs."""
+    host, handler = server
+    handler.script = [(200, {"access_token": "foro_pat_abc"})]
+
+    payload = auth.poll_for_token(host, _grant(interval=5))
+
+    assert payload["access_token"] == "foro_pat_abc"
+    assert no_sleeping == []
+
+
+def test_a_zero_interval_from_the_server_does_not_become_a_busy_loop(server, no_sleeping):
+    """0 is not a number to poll on, in either position."""
+    host, handler = server
+    handler.script = [
+        (400, {"error": "authorization_pending"}),
+        (400, {"error": "slow_down", "interval": 0}),
+        (200, {"access_token": "foro_pat_abc"}),
+    ]
+
+    auth.poll_for_token(host, _grant(interval=0))
+
+    assert no_sleeping == [auth.DEFAULT_INTERVAL, auth.DEFAULT_INTERVAL + auth.SLOW_DOWN_STEP]
+    assert all(slept > 0 for slept in no_sleeping)
 
 
 def test_denied_is_reported_as_denial_not_as_a_network_error(server):
@@ -281,3 +309,108 @@ def test_saving_never_leaves_the_file_group_or_world_readable():
     _config.save("foro.sh", _config.Credentials(token="foro_pat_abc"))
     mode = _config.config_path().stat().st_mode
     assert not mode & (stat.S_IRWXG | stat.S_IRWXO)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_saving_narrows_a_file_that_was_already_too_open():
+    """The case the test above cannot see: os.open's mode applies only on
+    create, so an existing 0644 hosts.yml kept it and took the token."""
+    path = _config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n")
+    path.chmod(0o644)
+
+    _config.save("foro.sh", _config.Credentials(token="foro_pat_abc"))
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert not _config.has_insecure_permissions()
+
+
+# --- malformed responses --------------------------------------------------
+#
+# A 2xx is not a promise about the body. Indexing one that isn't the expected
+# shape raised KeyError/TypeError out of the auth module as a traceback.
+
+
+def test_a_non_object_device_code_response_is_reported_not_indexed(server):
+    host, handler = server
+    handler.script = [(200, "<html>go away</html>")]
+
+    with pytest.raises(auth.AuthError, match="not a JSON object"):
+        auth.start_device_flow(host, label="laptop")
+
+
+def test_a_device_code_response_missing_a_field_names_the_field(server):
+    host, handler = server
+    handler.script = [(200, {"device_code": "dc", "user_code": "UC"})]
+
+    with pytest.raises(auth.AuthError, match="verification_uri"):
+        auth.start_device_flow(host, label="laptop")
+
+
+def test_an_omitted_interval_is_the_rfc_default_not_an_error(server):
+    """RFC 8628 §3.2 makes `interval` optional with a default of 5."""
+    host, handler = server
+    handler.script = [
+        (200, {
+            "device_code": "dc",
+            "user_code": "UC",
+            "verification_uri": "https://foro.sh/cli",
+            "verification_uri_complete": "https://foro.sh/cli?code=UC",
+            "expires_in": 900,
+        }),
+    ]
+
+    grant = auth.start_device_flow(host, label="laptop")
+
+    assert grant.interval == auth.DEFAULT_INTERVAL
+
+
+def test_an_approval_without_a_token_is_an_error_not_a_keyerror(server, no_sleeping):
+    """cli.py indexed `access_token` on whatever came back."""
+    host, handler = server
+    handler.script = [(200, {"token_type": "bearer"})]
+
+    with pytest.raises(auth.AuthError, match="access_token"):
+        auth.poll_for_token(host, _grant())
+
+
+def test_a_users_me_that_identifies_nobody_is_an_error(server):
+    host, handler = server
+    handler.script = [(200, {"unrelated": "shape"})]
+
+    with pytest.raises(auth.AuthError, match="identified no user"):
+        auth.fetch_identity(host, "foro_pat_abc")
+
+
+def test_a_non_dict_workspace_does_not_crash_identity(server):
+    host, handler = server
+    handler.script = [(200, {"email": "dev@example.com", "workspace": "acme"})]
+
+    assert auth.fetch_identity(host, "foro_pat_abc").workspace is None
+
+
+def test_revoke_reports_a_token_list_that_is_not_a_list(server):
+    host, handler = server
+    handler.script = [(200, {"tokens": []})]
+
+    with pytest.raises(auth.AuthError, match="not a JSON array"):
+        auth.revoke(host, auth.TOKEN_PREFIX + "a" * 43)
+
+
+def test_revoke_refuses_a_token_without_the_foro_prefix():
+    """The slice assumed the prefix was there; another shape yields the
+    wrong eight characters and matches nothing, or somebody else's row."""
+    with pytest.raises(auth.AuthError, match="does not look like a foro token"):
+        auth.revoke("foro.sh", "ghp_something_else_entirely")
+
+
+def test_revoke_will_not_send_an_id_that_reshapes_the_delete_path(server):
+    host, handler = server
+    token = auth.TOKEN_PREFIX + "a1b2c3d4" + "x" * 35
+    handler.script = [(200, [{"id": "../../users/me", "token_prefix": "a1b2c3d4"}])]
+
+    with pytest.raises(auth.AuthError, match="no usable `id`"):
+        auth.revoke(host, token)
+
+    assert len(handler.seen) == 1

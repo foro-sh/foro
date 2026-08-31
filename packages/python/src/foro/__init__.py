@@ -53,15 +53,34 @@ def _accepts_show_banner(run_method) -> bool:
         return False
 
 
+def _resolve_port(port: int | None) -> int:
+    """The port to bind, from the explicit argument or $PORT.
+
+    Resolved on `is None`: `port or ...` read an explicit 0 as "not given".
+    """
+    if port is None:
+        raw = os.environ.get("PORT", "8000")
+        try:
+            port = int(raw)
+        except ValueError:
+            raise ValueError(f"PORT is not a number: {raw!r}") from None
+
+    # 0 binds whatever the OS hands out, but the health probe checks the port
+    # the manifest declared - a random one fails the deploy confusingly.
+    if not 1 <= port <= 65535:
+        raise ValueError(f"port must be between 1 and 65535, got {port}")
+    return port
+
+
 def run(server, *, port: int | None = None) -> None:
     """Run an MCP server the way foro.sh expects: streamable HTTP, bound on
-    all interfaces, on $MCP_PORT. Identical locally and deployed.
+    all interfaces, on $PORT. Identical locally and deployed.
 
     Accepts any FastMCP-shaped server (standalone fastmcp.FastMCP,
     mcp.server.fastmcp.FastMCP, or a low-level Server) - it's duck-typed, not
     checked against a specific class, so it just needs a compatible .run().
     """
-    resolved_port = port or int(os.environ.get("MCP_PORT", "8000"))
+    resolved_port = _resolve_port(port)
 
     # Only reaches a FastMCP imported after this point - fastmcp reads the
     # variable into its settings object at import time, and by the time a
@@ -106,7 +125,7 @@ def bridge(command: list[str], *, port: int | None = None, shared: bool = False)
 
     Eagerly performs the backend's MCP initialize handshake before serving
     and raises if it fails. foro.sh's health probe only checks that this
-    process opened $MCP_PORT, not that the backend actually works - a
+    process opened $PORT, not that the backend actually works - a
     backend that dies on a bad import would otherwise report healthy while
     every tool call fails.
     """

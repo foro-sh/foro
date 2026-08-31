@@ -43,6 +43,15 @@ def detect_dependency_manager(build_dir: Path, override: str | None = None) -> s
     if has("requirements.txt"):
         return "uv-pip"
 
+    # `runtime` is not inferred from what's on disk, so a Node repo whose
+    # manifest omits it lands here, on the default runtime, and the honest
+    # message about missing Python markers reads as nonsense. Name the real fix.
+    if has("package.json"):
+        raise DependencyManagerError(
+            "No recognised Python project, but this looks like a Node project - "
+            "add `runtime: node` to foro.yaml"
+        )
+
     raise DependencyManagerError(
         "No recognised Python project (expected a uv/pdm/poetry/pipenv lockfile, "
         "a pyproject.toml, or a requirements.txt)"

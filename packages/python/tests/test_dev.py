@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import socket
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -24,12 +26,58 @@ def test_run_dev_succeeds_against_a_real_foro_run_server():
 
 
 def test_run_dev_raises_on_stdio_only_server():
-    with pytest.raises(DevError, match="never opened port"):
+    """The footgun this command exists to catch. It surfaces as an immediate
+    exit, not a hang - the child gets DEVNULL for stdin."""
+    with pytest.raises(DevError, match="foro.run"):
         run_dev(FIXTURES / "stdio-only", timeout=5)
 
 
+def _dead_on_arrival(tmp_path, port, exit_code=3):
+    (tmp_path / "server.py").write_text(f"import sys\nsys.exit({exit_code})\n")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "my-server"\nversion = "0.1.0"\nrequires-python = ">=3.11"\n'
+        f'\n[tool.foro]\nport = {port}\n'
+    )
+    return tmp_path
+
+
+def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
+    """It used to poll the full timeout regardless."""
+    started = time.monotonic()
+
+    with pytest.raises(DevError, match="exited with status 3"):
+        run_dev(_dead_on_arrival(tmp_path, 8137), timeout=30)
+
+    assert time.monotonic() - started < 15
+
+
+def test_a_dead_server_reports_its_exit_status(tmp_path):
+    """The old message never mentioned the process had exited, or with what."""
+    with pytest.raises(DevError) as exc_info:
+        run_dev(_dead_on_arrival(tmp_path, 8138), timeout=30)
+
+    assert "exited with status 3" in str(exc_info.value)
+    assert "output is above" in str(exc_info.value)
+
+
+def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
+    """The probe cannot tell whose listener it found, so a squatter read as
+    a healthy server. Refusing the port up front is what fixes that."""
+    squatter = socket.socket()
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("127.0.0.1", 0))
+    squatter.listen(8)
+    port = squatter.getsockname()[1]
+
+    try:
+        with pytest.raises(DevError, match="already in use"):
+            run_dev(_dead_on_arrival(tmp_path, port), timeout=30)
+    finally:
+        squatter.close()
+
+
 def test_start_server_loads_dotenv(tmp_path, monkeypatch):
-    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nMCP_PORT=9999\n")
+    (tmp_path / ".env").write_text("DEMO_SECRET=from-dotenv\nPORT=9999\n")
     captured = {}
 
     def fake_popen(args, **kwargs):
@@ -43,9 +91,9 @@ def test_start_server_loads_dotenv(tmp_path, monkeypatch):
 
     env = captured["kwargs"]["env"]
     assert env["DEMO_SECRET"] == "from-dotenv"
-    # The manifest's real port always wins over a stray MCP_PORT in .env -
+    # The manifest's real port always wins over a stray PORT in .env -
     # that value is authoritative, not something local config should shadow.
-    assert env["MCP_PORT"] == "8000"
+    assert env["PORT"] == "8000"
 
 
 def _captured_env(tmp_path, monkeypatch):

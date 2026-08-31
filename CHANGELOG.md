@@ -1,3 +1,46 @@
+## [0.11.0](https://github.com/foro-sh/foro/compare/v0.10.1...v0.11.0) (2026-08-14)
+
+## [0.10.1](https://github.com/foro-sh/foro/compare/v0.10.0...v0.10.1) (2026-08-13)
+
+## [0.10.0](https://github.com/foro-sh/foro/compare/v0.9.3...v0.10.0) (2026-08-13)
+
+## <small>0.9.3 (2026-08-07)</small>
+
+* style: trim the commentary added across this branch ([fb8a4ac](https://github.com/foro-sh/foro/commit/fb8a4ac))
+* fix(python): make failed handshakes raise HandshakeError on 3.10 ([9abb91a](https://github.com/foro-sh/foro/commit/9abb91a))
+* fix(python): narrow hosts.yml to 0600 even when it already existed ([279160e](https://github.com/foro-sh/foro/commit/279160e))
+* fix(python): only append /mcp to a URL that has no path of its own ([25fb67b](https://github.com/foro-sh/foro/commit/25fb67b))
+* fix(python): poll the device endpoint before sleeping, not after ([ab2f62c](https://github.com/foro-sh/foro/commit/ab2f62c))
+* fix(python): read auth responses as shapes rather than trusting them ([ef8890d](https://github.com/foro-sh/foro/commit/ef8890d))
+* fix(python): reject path segments that start with a dash ([d43ae88](https://github.com/foro-sh/foro/commit/d43ae88)), closes [#605](https://github.com/foro-sh/foro/issues/605) [#605](https://github.com/foro-sh/foro/issues/605)
+* fix(python): report a missing uv or git instead of raising FileNotFoundError ([598e989](https://github.com/foro-sh/foro/commit/598e989))
+* fix(python): stop `auth login --with-token` eating the token as a prompt answer ([8b9a626](https://github.com/foro-sh/foro/commit/8b9a626))
+* fix(python): stop foro dev waiting on a server that already died ([2775e06](https://github.com/foro-sh/foro/commit/2775e06))
+* fix(python): stop foro.run() silently ignoring an explicit port ([2b3cf79](https://github.com/foro-sh/foro/commit/2b3cf79))
+* fix(python): stop the fastmcp import scan reading vendored code ([a0a7486](https://github.com/foro-sh/foro/commit/a0a7486))
+* fix(python): survive a non-interactive stdin during auth login ([88b3abb](https://github.com/foro-sh/foro/commit/88b3abb))
+* fix(typescript): run the test suite on a glob node 18 can expand ([db35a83](https://github.com/foro-sh/foro/commit/db35a83))
+* chore(typescript): keep compiled tests out of the published package ([45b1f14](https://github.com/foro-sh/foro/commit/45b1f14))
+* ci: block a release on a red test suite ([bcbabf6](https://github.com/foro-sh/foro/commit/bcbabf6))
+* docs: fix typo ([991df9b](https://github.com/foro-sh/foro/commit/991df9b))
+
+## <small>0.9.2 (2026-08-04)</small>
+
+* fix(ci): install packages/typescript deps before the release build ([d1151ff](https://github.com/foro-sh/foro/commit/d1151ff)), closes [foro-sh/foro#49](https://github.com/foro-sh/foro/issues/49)
+* fix(typescript): add the @types/node dev dependency node:test needs ([5b980a6](https://github.com/foro-sh/foro/commit/5b980a6))
+* test(typescript): wire up the first real manifest-cases test ([d637a3d](https://github.com/foro-sh/foro/commit/d637a3d))
+
+## <small>0.9.1 (2026-08-04)</small>
+
+* test(python): cover manifest_path and is_valid_repo_path directly ([eacca34](https://github.com/foro-sh/foro/commit/eacca34))
+* fix(python): close build_path/manifest_path validation gap ([52609ae](https://github.com/foro-sh/foro/commit/52609ae))
+
+## 0.9.0 (2026-08-01)
+
+* feat(python): show foro's banner instead of FastMCP's on startup (#45) ([d36d5e0](https://github.com/foro-sh/foro/commit/d36d5e0)), closes [#45](https://github.com/foro-sh/foro/issues/45)
+* fix(python): make scaffolded tool registration hard to break silently (#44) ([96bd892](https://github.com/foro-sh/foro/commit/96bd892)), closes [#44](https://github.com/foro-sh/foro/issues/44)
+* ci: run the Python and TypeScript test suites (#47) ([9d827dc](https://github.com/foro-sh/foro/commit/9d827dc)), closes [#47](https://github.com/foro-sh/foro/issues/47)
+
 ## <small>0.8.1 (2026-08-01)</small>
 
 * fix(ci): relock the minimal-fastmcp fixture on release (#46) ([ecd297f](https://github.com/foro-sh/foro/commit/ecd297f)), closes [#46](https://github.com/foro-sh/foro/issues/46)

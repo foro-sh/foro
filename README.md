@@ -4,7 +4,7 @@
 
 **Sovereign infrastructure for MCP servers.**
 
-Push a Git repo with a `foro.yaml` to [foro.sh](https://foro.sh) and get a
+Push a Git repo with a `pyproject.toml` or a `package.json` to [foro.sh](https://foro.sh) and get a
 stable `https://<slug>.foro.sh` URL in about a minute — no Dockerfile, no YAML
 pipeline, no cloud console. This repository is the SDK that makes a repo
 deployable in the first place.
@@ -14,6 +14,7 @@ deployable in the first place.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Quickstart](#quickstart) ·
+[Claude Code Plugin](#claude-code-plugin) ·
 [Packages](#packages) ·
 [Example](#example) ·
 [Contributing](#contributing)
@@ -26,7 +27,7 @@ deployable in the first place.
 
 foro.sh takes a locally running [MCP](https://modelcontextprotocol.io) server
 and turns it into a publicly reachable one: sign in with GitHub, pick a repo,
-add secrets, click Deploy. The platform builds it, runs it in an isolated
+add secrets, click deploy. The platform builds it, runs it in an isolated
 container, and TLS-terminates it behind a stable subdomain.
 
 The `foro` package in this repository is the other half of that contract —
@@ -68,6 +69,23 @@ quietly uploading something different.
 See [`packages/python/README.md`](packages/python/README.md) for the full CLI
 reference, the runtime API, and how secrets flow from the dashboard into your
 server's environment.
+
+## Claude Code Plugin
+
+Building the server in [Claude Code](https://claude.com/claude-code)? Install
+the `foro` plugin instead of scaffolding by hand — it bundles the foro.sh docs
+MCP server plus skills that take a repo from empty folder to deployed:
+
+```
+/plugin marketplace add foro-sh/foro
+/plugin install foro
+```
+
+That gives you `/foro:create-foro-project`, `/foro:add-foro-to-existing-server`,
+`/foro:deploy-to-foro`, and `/foro:design-mcp-tools`. See
+[`plugins/claude-code/README.md`](plugins/claude-code/README.md) for what each
+one does — there's also a [Codex counterpart](plugins/codex) with the same
+skills.
 
 ## Packages
 

@@ -1,6 +1,6 @@
 ---
 name: deploy-to-foro
-description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL. Use when the user wants to deploy, ship, publish, or go live with a foro.yaml project on foro.sh, or when a foro.sh deploy has failed and they need help reading the logs. Assumes the repo already passes `foro check` (see the create-foro-project skill).
+description: Get a local foro.sh MCP server live at a public https://<slug>.foro.sh URL. Use when the user wants to deploy, ship, publish, or go live with a project on foro.sh, or when a foro.sh deploy has failed and they need help reading the logs. Assumes the repo already passes `foro check` (see the create-foro-project skill).
 ---
 
 # Deploy a project to foro.sh
@@ -63,7 +63,7 @@ https://<slug>.foro.sh
 ```
 
 The slug is **randomly generated** (`adjective-noun-4char`, e.g.
-`swift-harbor-a3f2`) and **immutable**. It is not derived from `foro.yaml`'s
+`swift-harbor-a3f2`) and **immutable**. It is not derived from the project's
 `name`. Do not promise the user a specific subdomain — read the real slug off
 the dashboard once the deploy finishes.
 
@@ -73,21 +73,21 @@ foro.sh splits logs into two streams — check the right one:
 
 - **Build log** — raw `docker build` output. Look here for dependency/lockfile
   problems: a stale lockfile, a package that won't install, a bad
-  `python_version`.
-- **Deploy log** — the orchestration narrative: clone, `foro.yaml` validation,
+  `runtime` and `runtime_version`.
+- **Deploy log** — the orchestration narrative: clone, config validation,
   container start, health check, and the failure reason. Look here for a wrong
-  `entrypoint`, a server not listening on `0.0.0.0:$MCP_PORT`, or a health
+  `entrypoint`, a server not listening on `0.0.0.0:$PORT`, or a health
   check that timed out.
 
 Usual suspects, in rough order of frequency:
 
 1. **Stale lockfile** — the lockfile no longer matches `pyproject.toml`, so the
    frozen install fails. Re-lock (`uv lock`, `poetry lock`, …), commit, push.
-2. **Wrong `entrypoint`** in `foro.yaml` — it must point at the file that calls
+2. **Wrong entry file** — the file foro starts must be the one that calls
    `foro.run(...)`.
 3. **Unset secret** — the code calls `foro.secret("NAME")` but `NAME` wasn't
    added in the Secrets tab. Add it and redeploy.
-4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$MCP_PORT`,
+4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$PORT`,
    which `foro.run()` does for you; a hand-rolled `run()` that binds
    `127.0.0.1` or a fixed port will fail the health check.
 

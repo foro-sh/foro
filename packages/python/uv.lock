@@ -5,8 +5,8 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version < '3.11' and sys_platform != 'win32'",
 ]
 
@@ -477,13 +477,15 @@ server = [
 
 [[package]]
 name = "foro"
-version = "0.8.1"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
     { name = "mcp" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "typer" },
 ]
 
@@ -496,9 +498,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anyio", specifier = ">=4.0" },
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.0" },
     { name = "mcp", specifier = ">=1.24,<2.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.15" },
 ]
 provides-extras = ["cli"]

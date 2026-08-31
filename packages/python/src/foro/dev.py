@@ -3,7 +3,7 @@ would pass the platform's health gate. "If it passes here, it passes
 deployed."
 
 Two things layered on top of each other:
-  1. Start `uv run <entrypoint>` with $MCP_PORT set (matches
+  1. Start `uv run <entrypoint>` with $PORT set (matches
      Dockerfile.template's run step), then TCP-probe the port the same way
      foro-wrapper.sh's health sidecar does (a bare `socket.create_connection`,
      nothing HTTP-specific) - this is what catches the stdio-transport
@@ -25,6 +25,7 @@ from pathlib import Path
 
 from foro._manifest import parse_and_validate
 from foro._mcp import handshake, local_url
+from foro._proc import popen
 
 DEFAULT_TIMEOUT = 60.0
 POLL_INTERVAL = 0.5
@@ -57,9 +58,13 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
         "FASTMCP_SHOW_SERVER_BANNER": "false",
         **os.environ,
         **dotenv,
-        "MCP_PORT": str(port),
+        # Exactly what the platform injects (container-spec.ts), and last so
+        # the manifest's port wins over a stray PORT in .env - a dev run on a
+        # different port than the one probed reads as a server that never came
+        # up.
+        "PORT": str(port),
     }
-    return subprocess.Popen(
+    return popen(
         ["uv", "run", entrypoint],
         cwd=build_dir,
         env=env,
@@ -67,15 +72,49 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
     )
 
 
-def wait_for_port(port: int, timeout: float = DEFAULT_TIMEOUT) -> bool:
+def port_is_open(port: int, timeout: float = 1.0) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def wait_for_port(
+    port: int, timeout: float = DEFAULT_TIMEOUT, process: subprocess.Popen | None = None
+) -> bool:
+    """Wait for something to accept a TCP connection on `port`.
+
+    Pass `process` to stop waiting on a server that has already died.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=2):
-                return True
-        except OSError:
-            time.sleep(POLL_INTERVAL)
+        if process is not None and process.poll() is not None:
+            return False
+        if port_is_open(port, timeout=2):
+            return True
+        time.sleep(POLL_INTERVAL)
     return False
+
+
+# A stdio server here gets DEVNULL for stdin and exits at once rather than
+# hanging, so both failure modes want this hint.
+_STDIO_HINT = (
+    "If the entrypoint calls a plain server.run() / mcp.run(), that defaults to "
+    "stdio transport, which never opens a port and would fail foro.sh's deploy "
+    "health check the same way - call foro.run(server) instead."
+)
+
+
+def _unhealthy_reason(process: subprocess.Popen, port: int, timeout: float) -> str:
+    status = process.poll()
+    if status is not None:
+        # The child inherits our stdout/stderr, so its output is on screen.
+        return (
+            f"the server exited with status {status} without opening port {port} - "
+            f"its output is above. {_STDIO_HINT}"
+        )
+    return f"server never opened port {port} within {timeout:.0f}s. {_STDIO_HINT}"
 
 
 def mcp_handshake(port: int) -> list[str]:
@@ -88,21 +127,25 @@ def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[sub
     """Start the repo's server and verify it would pass foro.sh's deploy
     health gate. Returns the running process (caller owns its lifecycle -
     terminate it when done) plus the verified port and tool list. Raises
-    DevError if the port never opens in time; the process is cleaned up
-    before raising.
+    DevError if the server dies or the port never opens in time; the process
+    is cleaned up before raising.
     """
     repo_dir = Path(repo_dir)
     manifest = parse_and_validate(repo_dir, ".")
 
+    # Claim the port first: afterwards the probe cannot tell whose listener
+    # it found, and a squatter reads as a healthy server.
+    if port_is_open(manifest.port):
+        raise DevError(
+            f"port {manifest.port} is already in use - something else is listening on "
+            "it, so foro dev cannot tell its server apart from that one. Stop it, or "
+            "give this project a different `port` in its [tool.foro] table."
+        )
+
     process = start_server(repo_dir, manifest.entrypoint, manifest.build_path, manifest.port)
     try:
-        if not wait_for_port(manifest.port, timeout=timeout):
-            raise DevError(
-                f"server never opened port {manifest.port} within {timeout:.0f}s - "
-                "does the entrypoint call foro.run(server)? A plain server.run() / "
-                "mcp.run() defaults to stdio transport, which never opens a port and "
-                "would fail foro.sh's deploy health check the same way."
-            )
+        if not wait_for_port(manifest.port, timeout=timeout, process=process):
+            raise DevError(_unhealthy_reason(process, manifest.port, timeout))
         tool_names = mcp_handshake(manifest.port)
     except Exception:
         process.terminate()

@@ -3,8 +3,9 @@ contract, so a failure surfaces instantly and locally instead of as a
 60-second health-check timeout.
 
 Layers two things on top of each other:
-  1. The same foro.yaml validation the platform runs at deploy time
-     (_manifest.py, _python_project.py) - same rules, same reason codes.
+  1. The same pyproject.toml / package.json validation the platform runs at
+     deploy time (_manifest.py, _python_project.py) - same rules, same
+     reason codes.
   2. Check-only rules the platform can't catch until build time: whether the
      entrypoint file actually exists, and whether a committed uv.lock is in
      sync with pyproject.toml.
@@ -12,11 +13,14 @@ Layers two things on top of each other:
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from foro._manifest import ManifestError, parse_and_validate
+from foro._node_project import NodeDependencyManagerError
+from foro._node_project import detect_dependency_manager as detect_node_dependency_manager
+from foro._proc import MissingToolError
+from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
 
 # Breaks the platform's metrics shim (infra/templates/sitecustomize.py),
@@ -51,9 +55,14 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
             message=f"entrypoint {manifest.entrypoint!r} not found under {manifest.build_path}",
         )
 
+    detect = (
+        detect_node_dependency_manager
+        if manifest.runtime == "node"
+        else detect_dependency_manager
+    )
     try:
-        manager = detect_dependency_manager(build_dir, manifest.dependency_manager)
-    except DependencyManagerError as err:
+        manager = detect(build_dir, manifest.dependency_manager)
+    except (DependencyManagerError, NodeDependencyManagerError) as err:
         return CheckResult(ok=False, reason="unsupported_project", message=str(err))
 
     warnings: list[str] = []
@@ -68,13 +77,21 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
                 "no uv.lock committed - builds will use a slower, non-reproducible "
                 "unlocked install. Run `uv lock`."
             )
-        elif not _uv_lock_in_sync(build_dir):
-            return CheckResult(
-                ok=False,
-                reason="lockfile_out_of_sync",
-                message="uv.lock is out of sync with pyproject.toml - `uv sync --frozen` "
-                "would fail the build. Run `uv lock`.",
-            )
+        else:
+            # Only this rule needs uv, so a missing uv downgrades it to a
+            # warning rather than failing a repo that is probably fine.
+            try:
+                in_sync = _uv_lock_in_sync(build_dir)
+            except MissingToolError as err:
+                warnings.append(f"{err}. uv.lock was not checked against pyproject.toml.")
+                in_sync = True
+            if not in_sync:
+                return CheckResult(
+                    ok=False,
+                    reason="lockfile_out_of_sync",
+                    message="uv.lock is out of sync with pyproject.toml - `uv sync --frozen` "
+                    "would fail the build. Run `uv lock`.",
+                )
 
     bad_import_file = _find_wrong_fastmcp_import(build_dir)
     if bad_import_file:
@@ -88,20 +105,22 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
 
 
 def _uv_lock_in_sync(build_dir: Path) -> bool:
-    result = subprocess.run(
-        ["uv", "lock", "--check"],
-        cwd=build_dir,
-        capture_output=True,
-        text=True,
+    """Raises MissingToolError when `uv` isn't installed - the caller decides
+    what a check it could not run means."""
+    return _run(["uv", "lock", "--check"], cwd=build_dir).returncode == 0
+
+
+# Vendored or installed source carries the marker string itself (inside
+# `mcp`/`fastmcp`, or a test asserting on it), and a hit there is a false
+# positive, not the user's code. Any dot-directory is skipped too, which
+# covers .venv, .tox, .git and whatever the next tool invents.
+_SCAN_EXCLUDE_DIRS = {"__pycache__", "node_modules", "site-packages", "venv", "env", "tests"}
+
+
+def _is_scannable(relative: Path) -> bool:
+    return not any(
+        part in _SCAN_EXCLUDE_DIRS or part.startswith(".") for part in relative.parts[:-1]
     )
-    return result.returncode == 0
-
-
-# Directories never worth descending into when scanning for the wrong
-# import - installed packages' own source can contain the literal marker
-# string too (e.g. inside `mcp`/`fastmcp` themselves), which would be a
-# false positive, not the user's code.
-_SCAN_EXCLUDE_DIRS = {".venv", "__pycache__", ".git"}
 
 
 def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
@@ -111,7 +130,7 @@ def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
     .py file under build_dir (not just the entrypoint) is what keeps this
     check meaningful for that structure instead of going blind."""
     for path in sorted(build_dir.rglob("*.py")):
-        if any(part in _SCAN_EXCLUDE_DIRS for part in path.relative_to(build_dir).parts):
+        if not _is_scannable(path.relative_to(build_dir)):
             continue
         try:
             text = path.read_text()

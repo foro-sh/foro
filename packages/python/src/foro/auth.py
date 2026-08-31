@@ -32,6 +32,8 @@ TOKEN_RE = re.compile(rf"^{TOKEN_PREFIX}[A-Za-z0-9_-]{{43}}$")
 # Fallback widening step, used only when a `slow_down` body arrives without an
 # `interval` of its own. The server normally sends the cadence it is enforcing.
 SLOW_DOWN_STEP = 5.0
+# RFC 8628 §3.2's default, used when the grant's own interval is unusable.
+DEFAULT_INTERVAL = 5.0
 
 
 class AuthError(Exception):
@@ -54,17 +56,53 @@ class Identity:
     workspace: str | None
 
 
+# A 2xx is not a promise about the body - a captive portal or proxy error page
+# answers 200 with something else, and _api hands back a plain string when the
+# body wasn't JSON. Indexing that is a traceback naming a dict key.
+def _object(payload, what: str) -> dict:
+    if not isinstance(payload, dict):
+        raise AuthError(f"{what} was not a JSON object - is this a foro.sh instance?")
+    return payload
+
+
+def _string(payload: dict, key: str, what: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value:
+        raise AuthError(f"{what} is missing `{key}`")
+    return value
+
+
+def _is_positive_number(value) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and value > 0
+
+
+def _positive_int(payload: dict, key: str, what: str) -> int:
+    value = payload.get(key)
+    if not _is_positive_number(value):
+        raise AuthError(f"{what} is missing a usable `{key}`")
+    return int(value)
+
+
+def _optional_positive_int(payload: dict, key: str, default: int) -> int:
+    value = payload.get(key)
+    return int(value) if _is_positive_number(value) else default
+
+
 def start_device_flow(host: str, label: str) -> DeviceGrant:
-    payload = _api.request(
-        "POST", "/api/cli/device/code", host=host, body={"label": label}
+    payload = _object(
+        _api.request("POST", "/api/cli/device/code", host=host, body={"label": label}),
+        "the device-code response",
     )
+    what = "the device-code response"
     return DeviceGrant(
-        device_code=payload["device_code"],
-        user_code=payload["user_code"],
-        verification_uri=payload["verification_uri"],
-        verification_uri_complete=payload["verification_uri_complete"],
-        expires_in=int(payload["expires_in"]),
-        interval=int(payload["interval"]),
+        device_code=_string(payload, "device_code", what),
+        user_code=_string(payload, "user_code", what),
+        verification_uri=_string(payload, "verification_uri", what),
+        verification_uri_complete=_string(payload, "verification_uri_complete", what),
+        expires_in=_positive_int(payload, "expires_in", what),
+        # RFC 8628 §3.2 makes `interval` optional and defaults it to 5, so a
+        # server that omits it is answering correctly, not badly.
+        interval=_optional_positive_int(payload, "interval", int(DEFAULT_INTERVAL)),
     )
 
 
@@ -74,56 +112,72 @@ def poll_for_token(host: str, grant: DeviceGrant, on_wait=None) -> dict:
     `on_wait(elapsed)` is called before each sleep so the caller can render
     progress - this loop owns the timing, not the display.
     """
-    interval = float(grant.interval)
+    # A 0 or negative cadence would busy-loop the token endpoint.
+    interval = float(grant.interval) if grant.interval > 0 else DEFAULT_INTERVAL
     started = time.monotonic()
     deadline = started + grant.expires_in
 
     while True:
-        if on_wait:
-            on_wait(time.monotonic() - started)
-        time.sleep(interval)
-
-        if time.monotonic() >= deadline:
-            raise AuthError("the code expired before it was authorized - run `foro auth login` again")
-
+        # Ask first, sleep after: the human is sent to the browser before
+        # this loop starts, so the approval is often already in.
         try:
-            return _api.request(
-                "POST",
-                "/api/cli/device/token",
-                host=host,
-                body={"device_code": grant.device_code},
+            payload = _object(
+                _api.request(
+                    "POST",
+                    "/api/cli/device/token",
+                    host=host,
+                    body={"device_code": grant.device_code},
+                ),
+                "the device-token response",
             )
+            # A 200 with no usable token is this loop's failure to report.
+            _string(payload, "access_token", "the device-token response")
+            return payload
         except ApiError as err:
             code = err.code
-            if code == "authorization_pending":
-                continue
             if code == "slow_down":
                 # The server widens its own stored interval and returns it, so
                 # poll on that rather than on a locally-guessed number - a
                 # guess that lands under what the server now enforces just
                 # trips `slow_down` again.
-                sent = err.payload.get("interval") if isinstance(err.payload, dict) else None
-                interval = float(sent) if sent else interval + SLOW_DOWN_STEP
-                continue
-            if code == "expired_token":
+                interval = _widened(err.payload, interval)
+            elif code == "expired_token":
                 raise AuthError(
                     "the code expired before it was authorized - run `foro auth login` again"
                 ) from None
-            if code == "access_denied":
+            elif code == "access_denied":
                 raise AuthError("authorization was denied in the browser") from None
-            raise
+            elif code != "authorization_pending":
+                raise
+
+        if time.monotonic() >= deadline:
+            raise AuthError("the code expired before it was authorized - run `foro auth login` again")
+
+        if on_wait:
+            on_wait(time.monotonic() - started)
+        time.sleep(interval)
+
+
+def _widened(payload, current: float) -> float:
+    """The interval to adopt after a `slow_down`. Anything but a usable
+    positive number widens locally instead."""
+    sent = payload.get("interval") if isinstance(payload, dict) else None
+    return float(sent) if _is_positive_number(sent) else current + SLOW_DOWN_STEP
 
 
 def fetch_identity(host: str, token: str) -> Identity:
     """Prove a token works, and find out who it belongs to. This is what makes
     `status` report a revoked token as broken rather than as logged in."""
-    payload = _api.request("GET", "/api/users/me", host=host, token=token)
+    payload = _object(_api.request("GET", "/api/users/me", host=host, token=token), "/users/me")
     # /users/me has no display name - repo_username is what the dashboard
     # shows, with email as the fallback for a Zitadel sign-in that hasn't
     # connected a repo provider yet.
-    user = payload.get("repo_username") or payload.get("email") or payload["id"]
+    user = payload.get("repo_username") or payload.get("email") or payload.get("id")
+    if not isinstance(user, str) or not user:
+        raise AuthError("/users/me identified no user - is this a foro.sh instance?")
     workspace = payload.get("workspace")
-    return Identity(user=user, workspace=workspace["name"] if workspace else None)
+    name = workspace.get("name") if isinstance(workspace, dict) else None
+    return Identity(user=user, workspace=name if isinstance(name, str) else None)
 
 
 def revoke(host: str, token: str) -> None:
@@ -134,9 +188,18 @@ def revoke(host: str, token: str) -> None:
     poll at all. So logout lists the caller's tokens and matches on
     `token_prefix`, the first 8 characters of the random part.
     """
+    # Slicing another shape yields the wrong eight characters, which then
+    # matches nothing - or somebody else's row.
+    if not token.startswith(TOKEN_PREFIX):
+        raise AuthError(f"this does not look like a foro token (no {TOKEN_PREFIX} prefix)")
     prefix = token[len(TOKEN_PREFIX) :][:8]
+
     rows = _api.request("GET", "/api/cli/tokens", host=host, token=token)
-    matches = [row for row in rows if row.get("token_prefix") == prefix]
+    if not isinstance(rows, list):
+        raise AuthError("the token list was not a JSON array - is this a foro.sh instance?")
+    matches = [
+        row for row in rows if isinstance(row, dict) and row.get("token_prefix") == prefix
+    ]
 
     if not matches:
         raise AuthError("the server does not list this token - it is already revoked")
@@ -148,4 +211,10 @@ def revoke(host: str, token: str) -> None:
             "more than one token matches this prefix - revoke it on /account instead"
         )
 
-    _api.request("DELETE", f"/api/cli/tokens/{matches[0]['id']}", host=host, token=token)
+    # The id goes into the DELETE path, so it has to be one segment.
+    raw_id = matches[0].get("id")
+    token_id = str(raw_id) if isinstance(raw_id, (str, int)) and not isinstance(raw_id, bool) else ""
+    if not token_id or "/" in token_id or token_id in (".", ".."):
+        raise AuthError("the matched token row has no usable `id` - revoke it on /account instead")
+
+    _api.request("DELETE", f"/api/cli/tokens/{token_id}", host=host, token=token)
