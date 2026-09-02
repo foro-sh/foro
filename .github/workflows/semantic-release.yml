@@ -29,7 +29,7 @@ concurrency:
 jobs:
   commitlint:
     name: Lint commit messages
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     permissions:
       contents: read
     steps:
@@ -83,7 +83,7 @@ jobs:
     name: Release
     needs: [commitlint, tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     outputs:
       published: ${{ steps.semantic-release.outputs.published }}
       version: ${{ steps.semantic-release.outputs.version }}
@@ -176,7 +176,7 @@ jobs:
     name: Publish Python SDK
     needs: release
     if: needs.release.outputs.published == 'true' && needs.release.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     environment: pypi
     permissions:
       contents: read
