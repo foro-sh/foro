@@ -424,7 +424,7 @@ provides-extras = ["cli"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "fastmcp", specifier = ">=2.0" },
+    { name = "fastmcp", specifier = ">=3.0" },
     { name = "pytest", specifier = ">=8.0" },
 ]
 

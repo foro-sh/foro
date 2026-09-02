@@ -23,6 +23,14 @@ updates:
     groups:
       uv:
         patterns: ["*"]
+    # mcp 2.0 changes the streamable-HTTP client `foro dev` handshakes with -
+    # its context manager yields two values where 1.x yields three - so a major
+    # bump is a code change in dev.py, not a lockfile bump. Dependabot widened
+    # the `<2.0` bound to `<3.0` once already and broke the suite; taking that
+    # PR again should be a deliberate act.
+    ignore:
+      - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
