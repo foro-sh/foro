@@ -23,10 +23,6 @@ jobs:
     # The suite starts real servers and waits on ports, so a hang is
     # plausible. Fail in minutes, not the six-hour default.
     timeout-minutes: 15
-    # Job-level, so every uv step - sync and run alike - resolves the same
-    # interpreter. Without it uv picks its own and the matrix collapses.
-    env:
-      UV_PYTHON: ${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +43,13 @@ jobs:
       # keeps the run honest: without it uv would quietly relock and the
       # tests would pass against dependencies nobody committed.
       - name: Install locked dependencies
+        # Step-scoped on purpose: this picks the interpreter the matrix leg
+        # is for (without it uv picks its own and the matrix collapses), but
+        # the scaffolding tests shell out to `uv lock` inside generated
+        # projects that require >=3.12, and a job-level UV_PYTHON would
+        # follow them in and fail the 3.10 leg.
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
         run: uv sync --frozen --dev
         working-directory: packages/python
 
