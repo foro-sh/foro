@@ -13,6 +13,7 @@ import pytest
 
 from foro._manifest import (
     ManifestError,
+    egress_entry_error,
     is_valid_repo_path,
     parse_and_validate,
     resolve_runtime_version,
@@ -86,3 +87,80 @@ def test_resolve_runtime_version_rejects_a_range_with_no_supported_version(spec,
     with pytest.raises(ManifestError) as exc_info:
         resolve_runtime_version(spec, runtime)
     assert exc_info.value.reason == "invalid_runtime_version"
+
+
+def _write_pyproject(tmp_path, contents):
+    (tmp_path / "pyproject.toml").write_text(contents)
+    (tmp_path / "server.py").write_text("")
+
+
+def test_egress_is_none_when_absent(tmp_path):
+    _write_pyproject(tmp_path, '[project]\nname = "my-server"\n')
+    assert parse_and_validate(tmp_path, ".").egress is None
+
+
+def test_egress_is_empty_list_when_declared_empty(tmp_path):
+    _write_pyproject(
+        tmp_path,
+        '[project]\nname = "my-server"\n\n[tool.foro]\nentrypoint = "server.py"\negress = []\n',
+    )
+    assert parse_and_validate(tmp_path, ".").egress == []
+
+
+def test_egress_preserves_order_and_contents(tmp_path):
+    _write_pyproject(
+        tmp_path,
+        '[project]\nname = "my-server"\n\n[tool.foro]\nentrypoint = "server.py"\n'
+        'egress = ["b.example.com:443", "a.example.com:443", "10.0.0.0/8:5432"]\n',
+    )
+    assert parse_and_validate(tmp_path, ".").egress == [
+        "b.example.com:443",
+        "a.example.com:443",
+        "10.0.0.0/8:5432",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entry", "expected"),
+    [
+        ("10.20.30.40:5432", True),
+        ("10.20.0.0/16:443", True),
+        ("example.com:443", True),
+        # Host bits below the prefix are masked off, same as iptables would,
+        # so this is treated as 10.0.0.0/8 - not narrow enough to dodge the
+        # reserved-range check, but not reserved either.
+        ("10.1.2.3/8:443", True),
+        # Deliberately allowlistable, for the future WireGuard connector into
+        # a customer VNet.
+        ("10.0.0.0/8:443", True),
+        ("192.168.0.0/16:443", True),
+        ("example.com", False),  # no port
+        ("example.com:0", False),
+        ("example.com:65536", False),
+        ("example.com:25", False),
+        ("example.com:465", False),
+        ("example.com:587", False),
+        ("169.254.169.254:80", False),
+        ("0.0.0.0/0:443", False),
+        # Masked to 172.0.0.0/8, which is wide enough to swallow the reserved
+        # 172.16.0.0/13 - overlap, not prefix equality, is what's checked.
+        ("172.0.0.0/8:443", False),
+        # Masked to 172.16.0.0/12, which overlaps 172.16.0.0/13.
+        ("172.16.5.5/12:443", False),
+        ("127.0.0.1:5432", False),
+        # `fullmatch`, not `match` - a trailing newline must not sneak past
+        # the `$` the way it would with Python's `match`.
+        ("example.com:443\n", False),
+    ],
+)
+def test_egress_entry_error(entry, expected):
+    assert (egress_entry_error(entry) is None) is expected
+
+
+def test_egress_entry_error_hostname_length_boundary():
+    ok = ("aaaa." * 50) + "aaa"
+    too_long = ok + "a"
+    assert len(ok) == 253
+    assert len(too_long) == 254
+    assert egress_entry_error(f"{ok}:443") is None
+    assert egress_entry_error(f"{too_long}:443") is not None
