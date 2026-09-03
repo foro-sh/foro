@@ -157,7 +157,15 @@ entrypoint = "cmd/serve.py"   # only when it isn't one of the names above
 runtime_version = "3.13"      # only to pin against what requires-python allows
 port = 9000                   # only when your server can't listen on $PORT
 dependency_manager = "poetry" # only when a repo is genuinely ambiguous
+egress = ["example.com:443"]  # only to lock down outbound traffic
 ```
+
+`egress` is absent by default, which keeps today's permissive outbound
+traffic. Declaring it - even as `[]` - switches the container to
+deny-by-default outbound, restricted to exactly the listed
+`<destination>:<port>` entries (an IPv4 address, an IPv4 CIDR, or a
+hostname). `foro dev` does not enforce it locally; it's a deploy-time
+restriction only.
 
 ```json
 // package.json - the same keys, under "foro"
