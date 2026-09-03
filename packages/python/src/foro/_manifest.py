@@ -15,6 +15,7 @@ the few values neither declares live in an optional `[tool.foro]` table or
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import posixpath
 import re
@@ -73,6 +74,58 @@ RESERVED_PORTS = sorted([PROXY_PORT, SIDECAR_PORT])
 DEFAULT_RUNTIME = "python"
 DEFAULT_PORT = 8000
 
+# --- egress allowlist (issue #907/#95) --------------------------------------
+#
+# Each entry is `<destination>:<port>` - port is required (no implicit :443:
+# an author who forgets it should get a rejection, not an allowlist wider than
+# they meant). destination is an IPv4 address, an IPv4 CIDR, or an RFC1123
+# hostname - never an IPv6 literal, since the platform's egress agent runs
+# iptables (v4), not ip6tables. Mirrors manifest.ts's regexes character for
+# character.
+_IPV4_OCTET = r"(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])"
+_IPV4_RE_SRC = rf"{_IPV4_OCTET}(?:\.{_IPV4_OCTET}){{3}}"
+_IPV4_CIDR_RE_SRC = rf"{_IPV4_RE_SRC}/(?:[0-9]|[12][0-9]|3[0-2])"
+# One DNS label per RFC1123: alphanumeric, interior hyphens only, 1-63 chars.
+_HOSTNAME_RE_SRC = (
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*"
+)
+# `fullmatch`, not `match` - see is_valid_repo_path for why a bare `$` isn't
+# enough to reject a trailing newline in Python.
+_EGRESS_ENTRY_RE = re.compile(
+    rf"^({_IPV4_CIDR_RE_SRC}|{_IPV4_RE_SRC}|{_HOSTNAME_RE_SRC}):([0-9]{{1,5}})$"
+)
+_IPV4_OR_CIDR_RE = re.compile(rf"^(?:{_IPV4_CIDR_RE_SRC}|{_IPV4_RE_SRC})$")
+_BLOCKED_EGRESS_PORTS = {25, 465, 587}
+# The per-label cap is in the regex; this is the whole-name one (RFC1035).
+_MAX_HOSTNAME_LENGTH = 253
+# Cap in place so a manifest can't hand the host agent an unbounded rule set
+# to rebuild on every deploy. Mirrors platform's MAX_EGRESS_ENTRIES.
+MAX_EGRESS_ENTRIES = 20
+
+# Well-formed is not the same as permitted: ranges an entry may never overlap.
+# The agent enforces the same list in the chain itself, since a hostname's
+# resolved address can only be judged there; this exists so an author is told
+# `invalid_egress` at deploy time rather than getting a silently unreachable
+# destination. 10.0.0.0/8 and 192.168.0.0/16 are deliberately absent - those
+# stay allowlistable, for the future WireGuard connector into a customer VNet.
+_RESERVED_EGRESS_RANGES = [
+    ipaddress.ip_network(cidr)
+    for cidr in (
+        "0.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        # 172.16/12 minus the user-container pool - the platform's own bridge
+        # networks (platform-internal, platform-egress) sit in here.
+        "172.16.0.0/13",
+        "172.24.0.0/14",
+        "172.28.0.0/15",
+        "172.31.0.0/16",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+    )
+]
+
 # The config file each runtime is read from. Presence is also what decides the
 # runtime, so this table is the whole "which language is this" rule.
 CONFIG_FILES: dict[str, str] = {
@@ -92,6 +145,7 @@ KNOWN_FIELDS = {
     "runtime_version",
     "port",
     "dependency_manager",
+    "egress",
 }
 
 # Checked in order; the first that exists wins. Mirrors the platform's own
@@ -123,6 +177,7 @@ class ValidatedManifest:
     runtime_version: str
     port: int
     dependency_manager: str | None
+    egress: list[str] | None
 
 
 def is_valid_repo_path(p: str) -> bool:
@@ -148,6 +203,44 @@ def is_valid_repo_path(p: str) -> bool:
     return all(
         segment != ".." and not segment.startswith("-") and _PATH_SEGMENT_RE.fullmatch(segment)
         for segment in p.split("/")
+    )
+
+
+def egress_entry_error(entry: str) -> str | None:
+    """Why `entry` may not be used as an egress allowlist entry, or `None` if
+    it may. Mirrors manifest.ts's `egressEntryError`, so the shared case table
+    catches a rule that changes on one side but not the other.
+
+    The overlap check uses stdlib `ipaddress` rather than reimplementing the
+    range arithmetic: `ip_network(destination, strict=False)` masks host bits
+    below the prefix (so `10.1.2.3/8` is treated as `10.0.0.0/8`, same as
+    iptables would) and a bare address becomes a `/32`, so `.overlaps()` gives
+    exactly the "overlap, not prefix equality" semantics the platform needs.
+    """
+    match = _EGRESS_ENTRY_RE.fullmatch(entry)
+    if not match:
+        return (
+            "must be `<destination>:<port>`, where destination is an IPv4 "
+            "address, an IPv4 CIDR, or a hostname, and port is 1-65535"
+        )
+    port = int(match.group(2))
+    if not (1 <= port <= MAX_PORT):
+        return f"port must be 1-{MAX_PORT}"
+    if port in _BLOCKED_EGRESS_PORTS:
+        return f"port {port} is outbound mail, which the platform blocks for every project"
+    destination = match.group(1)
+    # A hostname can only be judged once resolved, which happens on the host.
+    if not _IPV4_OR_CIDR_RE.fullmatch(destination):
+        if len(destination) > _MAX_HOSTNAME_LENGTH:
+            return "hostname is longer than 253 characters"
+        return None
+    network = ipaddress.ip_network(destination, strict=False)
+    denied = next((r for r in _RESERVED_EGRESS_RANGES if network.overlaps(r)), None)
+    if denied is None:
+        return None
+    return (
+        f"overlaps {denied}, which is reserved "
+        "(link-local/metadata, loopback or a platform network)"
     )
 
 
@@ -524,6 +617,30 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
             )
         dependency_manager = raw_dm
 
+    # egress - optional per-project allowlist (issue #907/#95). Absent means
+    # "declare nothing", which the build pipeline reads as keeping today's
+    # permissive egress; present means deny-by-default outbound restricted to
+    # exactly these destinations. `None` and `[]` must stay distinct all the
+    # way through, so nothing here tests this field for truthiness.
+    egress: list[str] | None = None
+    if "egress" in block:
+        raw_egress = block["egress"]
+        if not isinstance(raw_egress, list):
+            raise ManifestError("`egress` must be an array of strings", "invalid_egress")
+        if len(raw_egress) > MAX_EGRESS_ENTRIES:
+            raise ManifestError(
+                f"`egress` allows at most {MAX_EGRESS_ENTRIES} entries", "invalid_egress"
+            )
+        for raw_entry in raw_egress:
+            problem = (
+                egress_entry_error(raw_entry)
+                if isinstance(raw_entry, str)
+                else "must be `<destination>:<port>`, written as a string"
+            )
+            if problem:
+                raise ManifestError(f"`egress` entry `{raw_entry}` {problem}", "invalid_egress")
+        egress = list(raw_egress)
+
     return ValidatedManifest(
         name=display_name(_declared_name(doc, runtime)),
         build_path=build_path,
@@ -532,4 +649,5 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
         runtime_version=runtime_version,
         port=port,
         dependency_manager=dependency_manager,
+        egress=egress,
     )
