@@ -176,7 +176,10 @@ jobs:
     name: Publish Python SDK
     needs: release
     if: needs.release.outputs.published == 'true' && needs.release.outputs.python == 'true'
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # GitHub-hosted deliberately, not a Blacksmith runner: pypa's publish
+    # action is a container action with an amd64-only image, so an arm64
+    # runner fails with `exec /app/twine-upload.sh: exec format error`.
+    runs-on: ubuntu-latest
     environment: pypi
     permissions:
       contents: read

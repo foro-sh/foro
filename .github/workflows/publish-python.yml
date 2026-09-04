@@ -18,7 +18,10 @@ permissions:
 
 jobs:
   publish:
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # GitHub-hosted deliberately, not a Blacksmith runner: pypa's publish
+    # action is a container action with an amd64-only image, so an arm64
+    # runner fails with `exec /app/twine-upload.sh: exec format error`.
+    runs-on: ubuntu-latest
     environment: pypi
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
