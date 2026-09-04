@@ -7,6 +7,14 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    # The conventionalcommits preset is here only because semantic-release
+    # renders release notes with it, and @semantic-release/release-notes-generator
+    # pins conventional-changelog-writer <9. Preset 10 requires writer 9 and
+    # dies with `Missing helper`, which is what broke every release from Sept 2
+    # until #97. It becomes bumpable when semantic-release ships a newer writer.
+    ignore:
+      - dependency-name: conventional-changelog-conventionalcommits
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /packages/typescript
