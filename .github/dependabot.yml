@@ -28,8 +28,15 @@ updates:
     # bump is a code change in dev.py, not a lockfile bump. Dependabot widened
     # the `<2.0` bound to `<3.0` once already and broke the suite; taking that
     # PR again should be a deliberate act.
+    #
+    # fastmcp majors are the same bound seen from the other side: fastmcp 4
+    # requires mcp>=2.0, so every attempt to bump it fails resolution against
+    # the `<2.0` above and the whole uv group errors out. It becomes bumpable
+    # again in the same commit that lifts the mcp bound.
     ignore:
       - dependency-name: mcp
+        update-types: ["version-update:semver-major"]
+      - dependency-name: fastmcp
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions

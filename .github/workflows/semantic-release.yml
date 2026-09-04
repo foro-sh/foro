@@ -43,7 +43,11 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install --no-fund --no-audit
+        # `npm ci`, not `npm install`: install re-resolves the tree and can
+        # float a transitive dependency past what package-lock.json records.
+        # That is how the release job ended up rendering release notes with a
+        # preset major its own writer could not read (#97).
+        run: npm ci --no-fund --no-audit
 
       - name: Lint PR commits
         if: github.event_name == 'pull_request'
@@ -110,7 +114,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Install dependencies
-        run: npm install --no-fund --no-audit
+        run: npm ci --no-fund --no-audit
 
       # Must run before the release step: semantic-release's own
       # `chore(release):` commit rewrites both manifests, so measuring after it
