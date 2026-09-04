@@ -123,9 +123,6 @@ def test_egress_preserves_order_and_contents(tmp_path):
 @pytest.mark.parametrize(
     ("entry", "expected"),
     [
-        ("10.20.30.40:5432", True),
-        ("10.20.0.0/16:443", True),
-        ("example.com:443", True),
         # Host bits below the prefix are masked off, same as iptables would,
         # so this is treated as 10.0.0.0/8 - not narrow enough to dodge the
         # reserved-range check, but not reserved either.
@@ -134,20 +131,11 @@ def test_egress_preserves_order_and_contents(tmp_path):
         # a customer VNet.
         ("10.0.0.0/8:443", True),
         ("192.168.0.0/16:443", True),
-        ("example.com", False),  # no port
-        ("example.com:0", False),
-        ("example.com:65536", False),
-        ("example.com:25", False),
-        ("example.com:465", False),
-        ("example.com:587", False),
-        ("169.254.169.254:80", False),
-        ("0.0.0.0/0:443", False),
         # Masked to 172.0.0.0/8, which is wide enough to swallow the reserved
         # 172.16.0.0/13 - overlap, not prefix equality, is what's checked.
         ("172.0.0.0/8:443", False),
         # Masked to 172.16.0.0/12, which overlaps 172.16.0.0/13.
         ("172.16.5.5/12:443", False),
-        ("127.0.0.1:5432", False),
         # `fullmatch`, not `match` - a trailing newline must not sneak past
         # the `$` the way it would with Python's `match`.
         ("example.com:443\n", False),

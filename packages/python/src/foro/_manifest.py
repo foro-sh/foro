@@ -96,7 +96,7 @@ _EGRESS_ENTRY_RE = re.compile(
     rf"^({_IPV4_CIDR_RE_SRC}|{_IPV4_RE_SRC}|{_HOSTNAME_RE_SRC}):([0-9]{{1,5}})$"
 )
 _IPV4_OR_CIDR_RE = re.compile(rf"^(?:{_IPV4_CIDR_RE_SRC}|{_IPV4_RE_SRC})$")
-_BLOCKED_EGRESS_PORTS = {25, 465, 587}
+_DENIED_EGRESS_PORTS = {25, 465, 587}
 # The per-label cap is in the regex; this is the whole-name one (RFC1035).
 _MAX_HOSTNAME_LENGTH = 253
 # Cap in place so a manifest can't hand the host agent an unbounded rule set
@@ -109,7 +109,7 @@ MAX_EGRESS_ENTRIES = 20
 # `invalid_egress` at deploy time rather than getting a silently unreachable
 # destination. 10.0.0.0/8 and 192.168.0.0/16 are deliberately absent - those
 # stay allowlistable, for the future WireGuard connector into a customer VNet.
-_RESERVED_EGRESS_RANGES = [
+_DENIED_EGRESS_RANGES = [
     ipaddress.ip_network(cidr)
     for cidr in (
         "0.0.0.0/8",
@@ -211,11 +211,9 @@ def egress_entry_error(entry: str) -> str | None:
     it may. Mirrors manifest.ts's `egressEntryError`, so the shared case table
     catches a rule that changes on one side but not the other.
 
-    The overlap check uses stdlib `ipaddress` rather than reimplementing the
-    range arithmetic: `ip_network(destination, strict=False)` masks host bits
-    below the prefix (so `10.1.2.3/8` is treated as `10.0.0.0/8`, same as
-    iptables would) and a bare address becomes a `/32`, so `.overlaps()` gives
-    exactly the "overlap, not prefix equality" semantics the platform needs.
+    Stdlib `ipaddress` stands in for manifest.ts's `ipv4Range`: `strict=False`
+    masks host bits below the prefix (`10.1.2.3/8` is `10.0.0.0/8`, same as
+    iptables would) and `.overlaps()` is the overlap-not-equality test.
     """
     match = _EGRESS_ENTRY_RE.fullmatch(entry)
     if not match:
@@ -226,16 +224,16 @@ def egress_entry_error(entry: str) -> str | None:
     port = int(match.group(2))
     if not (1 <= port <= MAX_PORT):
         return f"port must be 1-{MAX_PORT}"
-    if port in _BLOCKED_EGRESS_PORTS:
+    if port in _DENIED_EGRESS_PORTS:
         return f"port {port} is outbound mail, which the platform blocks for every project"
     destination = match.group(1)
     # A hostname can only be judged once resolved, which happens on the host.
     if not _IPV4_OR_CIDR_RE.fullmatch(destination):
         if len(destination) > _MAX_HOSTNAME_LENGTH:
-            return "hostname is longer than 253 characters"
+            return f"hostname is longer than {_MAX_HOSTNAME_LENGTH} characters"
         return None
     network = ipaddress.ip_network(destination, strict=False)
-    denied = next((r for r in _RESERVED_EGRESS_RANGES if network.overlaps(r)), None)
+    denied = next((r for r in _DENIED_EGRESS_RANGES if network.overlaps(r)), None)
     if denied is None:
         return None
     return (
