@@ -1,3 +1,8 @@
+## <small>0.12.1 (2026-09-04)</small>
+
+* Merge pull request #98 from foro-sh/fix/publish-runners ([ed85453](https://github.com/foro-sh/foro/commit/ed85453)), closes [#98](https://github.com/foro-sh/foro/issues/98)
+* fix(ci): publish from GitHub-hosted runners ([88792f5](https://github.com/foro-sh/foro/commit/88792f5)), closes [#91](https://github.com/foro-sh/foro/issues/91) [pypa/#action-pypi-publish](https://github.com/foro-sh/foro/issues/action-pypi-publish)
+
 ## 0.12.0 (2026-09-04)
 
 * Merge branch 'main' into claude/issue-79 ([f539d82](https://github.com/foro-sh/foro/commit/f539d82))
