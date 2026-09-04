@@ -1,3 +1,14 @@
+## <small>0.12.2 (2026-09-04)</small>
+
+* Merge pull request #93 from foro-sh/dependabot/npm_and_yarn/packages/typescript/npm-100d231f0b ([9a359be](https://github.com/foro-sh/foro/commit/9a359be)), closes [#93](https://github.com/foro-sh/foro/issues/93)
+* Merge pull request #94 from foro-sh/dependabot/uv/packages/python/uv-838fa27cfe ([45207be](https://github.com/foro-sh/foro/commit/45207be)), closes [#94](https://github.com/foro-sh/foro/issues/94)
+* Merge pull request #99 from foro-sh/ci/lockfile-and-dependabot ([75a042e](https://github.com/foro-sh/foro/commit/75a042e)), closes [#99](https://github.com/foro-sh/foro/issues/99)
+* fix(ci): commit the root lockfile so npm ci has something to install ([0af3ee6](https://github.com/foro-sh/foro/commit/0af3ee6))
+* fix(ci): regenerate the root lockfile from a clean tree ([47c2b32](https://github.com/foro-sh/foro/commit/47c2b32))
+* ci: install from the lockfile and stop retrying an impossible fastmcp bump ([5cf3dda](https://github.com/foro-sh/foro/commit/5cf3dda)), closes [#97](https://github.com/foro-sh/foro/issues/97)
+* chore(deps-dev): bump @types/node ([1ef7f28](https://github.com/foro-sh/foro/commit/1ef7f28))
+* chore(deps): bump typer ([af5437a](https://github.com/foro-sh/foro/commit/af5437a))
+
 ## <small>0.12.1 (2026-09-04)</small>
 
 * Merge pull request #98 from foro-sh/fix/publish-runners ([ed85453](https://github.com/foro-sh/foro/commit/ed85453)), closes [#98](https://github.com/foro-sh/foro/issues/98)
