@@ -43,10 +43,6 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        # `npm ci`, not `npm install`: install re-resolves the tree and can
-        # float a transitive dependency past what package-lock.json records.
-        # That is how the release job ended up rendering release notes with a
-        # preset major its own writer could not read (#97).
         run: npm ci --no-fund --no-audit
 
       - name: Lint PR commits
