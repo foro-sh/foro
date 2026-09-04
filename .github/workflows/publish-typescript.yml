@@ -27,7 +27,10 @@ permissions:
 
 jobs:
   publish:
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # GitHub-hosted deliberately, not a Blacksmith runner: npm builds the
+    # provenance attestation from the runner's OIDC claims and rejects a
+    # third-party runner's with `422 Error verifying sigstore provenance`.
+    runs-on: ubuntu-latest
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
