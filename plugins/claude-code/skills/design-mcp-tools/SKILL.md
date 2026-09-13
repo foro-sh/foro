@@ -19,7 +19,8 @@ it's deployed. Design against it up front.
 
 `foro-docs.read_doc("tokens")` has the full economics — how both figures are
 counted, which tokenizer, and why they're a ruler rather than an invoice. Read
-it if the user wants the numbers justified. This skill is the procedure.
+it if the user wants the numbers justified (without the docs MCP, it's at
+https://foro.sh/docs/tokens). This skill is the procedure.
 
 ## Write the description for a model, not a reader
 
