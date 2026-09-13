@@ -345,6 +345,7 @@ __pycache__/
 .env
 .pytest_cache/
 .DS_Store
+.foro/
 '''
 
 _ENV_EXAMPLE_TEMPLATE = '''# Copy to .env for local development - foro dev loads it automatically.
