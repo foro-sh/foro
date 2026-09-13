@@ -7,9 +7,9 @@ things that already exist but that agents can't reach on their own:
 - **The foro.sh docs MCP server** (`docs.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
-- **Four skills** covering both ways in (a new project, or one that already
-  exists), the deploy itself, and the tool design that decides what a server
-  costs to use.
+- **Five skills** covering both ways in (a new project, or one that already
+  exists), building on an existing HTTP API, the deploy itself, and the tool
+  design that decides what a server costs to use.
 
 ## Install
 
@@ -69,6 +69,11 @@ Skills are namespaced by the plugin name:
   size, and tool count are a standing cost on every message. Covers the levers
   in payoff order and ends at the dashboard's real numbers rather than a
   feeling.
+- **`/foro:wrap-an-http-api`** — build tools on an existing API from its real
+  contract. A client written from memory deploys green and 404s on every call,
+  so it finds the API's own spec first (`/openapi.json` and friends), falls
+  back to pasted docs, then to probing the live API, and queries specs with
+  `jq` from `.foro/specs/` instead of reading them whole.
 
 ## Requirements
 
