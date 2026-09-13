@@ -24,7 +24,10 @@ name what will be slow or non-reproducible about it.
 
 ## 1. Get the code on GitHub
 
-foro.sh deploys from a GitHub repo, so it needs to exist there first:
+foro.sh deploys from a GitHub repo, so it needs to exist there first. **If
+`git remote -v` already shows a GitHub remote** (a clone, or a repo created from
+a template), commit and push to it and move on: creating another repo splits
+the project in two. Otherwise:
 
 ```bash
 git init
@@ -33,21 +36,28 @@ git commit -m "init"
 gh repo create --push        # creates the GitHub repo and pushes in one step
 ```
 
-Commit the lockfile — `uv.lock`, `pdm.lock`, `poetry.lock`, or `Pipfile.lock`,
+Commit the lockfile — `uv.lock`, `poetry.lock`, `package-lock.json`, or
 whichever your dependency manager writes. Without one the build still runs, but
 as a slower unlocked install with no reproducibility guarantee. A lockfile that
-is *out of sync* with `pyproject.toml` is worse than none: the build installs
-with `--frozen` and fails outright.
+is *out of sync* with `pyproject.toml` or `package.json` is worse than none: the
+build installs exactly what it pins. `npm ci` refuses outright; `uv sync
+--frozen` succeeds without the new dependency, and the server dies on import.
+After any dependency change, re-lock (`uv lock`, `npm install`, …) and commit.
 
 ## 2. Deploy from the dashboard (this part is a browser step)
 
 There is **no deploy API for users yet** — deploying happens in the foro.sh
-dashboard, not the CLI. Don't pretend a command does it. Walk the user through:
+dashboard, not the CLI. Don't pretend a command does it.
+
+If the dashboard already has a project for this repo, open it and press
+**Redeploy** — unless auto-deploy is on, in which case the push was the deploy.
+Don't create a second project. Otherwise walk the user through:
 
 1. Sign in to the foro.sh dashboard with GitHub.
 2. Pick the repo you just pushed.
 3. Add any secrets the server needs in the **Secrets** tab (the same names your
-   code reads via `foro.secret("NAME")`). Secrets live here, never in the repo.
+   code reads, via `foro.secret("NAME")` in Python or `process.env` in Node).
+   Secrets live here, never in the repo.
 4. Click **Deploy**.
 
 For the current connect/deploy walkthrough and screenshots, read the docs MCP:
@@ -81,19 +91,22 @@ foro.sh splits logs into two streams — check the right one:
 
 Usual suspects, in rough order of frequency:
 
-1. **Stale lockfile** — the lockfile no longer matches `pyproject.toml`, so the
-   frozen install fails. Re-lock (`uv lock`, `poetry lock`, …), commit, push.
-2. **Wrong entry file** — the file foro starts must be the one that calls
-   `foro.run(...)`.
-3. **Unset secret** — the code calls `foro.secret("NAME")` but `NAME` wasn't
-   added in the Secrets tab. Add it and redeploy.
+1. **Stale lockfile** — the lockfile no longer matches `pyproject.toml` or
+   `package.json`: a failed install in the build log, or an import error in the
+   deploy log. Re-lock (`uv lock`, `npm install`, …), commit, push.
+2. **Wrong entry file** — the file foro starts must be the one that starts the
+   server: the one calling `foro.run(...)` in Python, `main` in `package.json`.
+3. **Unset secret** — the code reads `NAME` but it wasn't added in the Secrets
+   tab. Add it and redeploy.
 4. **Server doesn't bind correctly** — it must listen on `0.0.0.0:$PORT`,
    which `foro.run()` does for you; a hand-rolled `run()` that binds
    `127.0.0.1` or a fixed port will fail the health check.
 
-Reproduce most of these locally with `uvx foro dev` before pushing again — it
-runs the server the same way the platform does, so a failure shows up in
-seconds instead of as a 60-second cloud health-check timeout.
+Reproduce most of these locally before pushing again, so a failure shows up in
+seconds instead of as a 60-second cloud health-check timeout. In Python,
+`uvx foro dev` runs the server the same way the platform does. It doesn't run
+Node yet: install with `npm ci` and start `node <main>` with `PORT` set, which
+is what the platform does.
 
 ## Done when
 
