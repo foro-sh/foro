@@ -62,7 +62,8 @@ Don't create a second project. Otherwise walk the user through:
 
 For the current connect/deploy walkthrough and screenshots, read the docs MCP:
 `foro-docs.read_doc("connect")` and `foro-docs.read_doc("secrets")` (use
-`foro-docs.list_docs()` to see all slugs).
+`foro-docs.list_docs()` to see all slugs). Without the docs MCP, the same pages
+are at https://foro.sh/docs/connect and https://foro.sh/docs/secrets.
 
 ## 3. The result: a generated URL, not a name you choose
 
