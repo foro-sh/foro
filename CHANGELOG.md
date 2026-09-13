@@ -1,3 +1,10 @@
+## <small>0.13.1 (2026-09-13)</small>
+
+* Merge pull request #105 from foro-sh/fix/platform-951-gitignore-foro ([a5bccd5](https://github.com/foro-sh/foro/commit/a5bccd5)), closes [#105](https://github.com/foro-sh/foro/issues/105)
+* Merge pull request #108 from foro-sh/fix/platform-951-init-foro-floor ([4d4649e](https://github.com/foro-sh/foro/commit/4d4649e)), closes [#108](https://github.com/foro-sh/foro/issues/108)
+* fix(python): floor foro at 0.11 in projects foro init scaffolds ([63dd2d1](https://github.com/foro-sh/foro/commit/63dd2d1)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* fix(python): ignore .foro/ in projects foro init scaffolds ([c6938cf](https://github.com/foro-sh/foro/commit/c6938cf)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+
 ## 0.13.0 (2026-09-13)
 
 * Merge pull request #101 from foro-sh/ci/pin-preset-major ([31e355b](https://github.com/foro-sh/foro/commit/31e355b)), closes [#101](https://github.com/foro-sh/foro/issues/101)
