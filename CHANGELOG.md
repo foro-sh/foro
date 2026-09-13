@@ -1,3 +1,18 @@
+## 0.13.0 (2026-09-13)
+
+* Merge pull request #101 from foro-sh/ci/pin-preset-major ([31e355b](https://github.com/foro-sh/foro/commit/31e355b)), closes [#101](https://github.com/foro-sh/foro/issues/101)
+* Merge pull request #104 from foro-sh/fix/platform-951-plugin-text ([b44acad](https://github.com/foro-sh/foro/commit/b44acad)), closes [#104](https://github.com/foro-sh/foro/issues/104)
+* Merge pull request #106 from foro-sh/feat/platform-951-wrap-http-api ([185365e](https://github.com/foro-sh/foro/commit/185365e)), closes [#106](https://github.com/foro-sh/foro/issues/106)
+* Merge pull request #107 from foro-sh/fix/platform-951-portable-skills ([0fb7a87](https://github.com/foro-sh/foro/commit/0fb7a87)), closes [#107](https://github.com/foro-sh/foro/issues/107)
+* docs(plugins): give foro-docs references a URL fallback ([1b6d293](https://github.com/foro-sh/foro/commit/1b6d293)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* docs(plugins): list the docs MCP's real tools and scope python-only ([aa98c46](https://github.com/foro-sh/foro/commit/aa98c46)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* docs(plugins): list wrap-an-http-api in both plugin READMEs ([a432531](https://github.com/foro-sh/foro/commit/a432531)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* fix(plugins): describe the deploy path without foro.yaml ([71b4848](https://github.com/foro-sh/foro/commit/71b4848)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* fix(plugins): fit deploy-to-foro to existing repos and node ([3b82ba0](https://github.com/foro-sh/foro/commit/3b82ba0)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* feat(plugins): add the wrap-an-http-api skill ([5281aba](https://github.com/foro-sh/foro/commit/5281aba)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* ci: fail on stale plugin text and skills without frontmatter ([5cb3542](https://github.com/foro-sh/foro/commit/5cb3542)), closes [foro-sh/platform#951](https://github.com/foro-sh/platform/issues/951)
+* ci: hold the conventionalcommits preset at the major semantic-release can render ([a6748f0](https://github.com/foro-sh/foro/commit/a6748f0))
+
 ## <small>0.12.2 (2026-09-04)</small>
 
 * Merge pull request #93 from foro-sh/dependabot/npm_and_yarn/packages/typescript/npm-100d231f0b ([9a359be](https://github.com/foro-sh/foro/commit/9a359be)), closes [#93](https://github.com/foro-sh/foro/issues/93)
