@@ -172,7 +172,8 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert "[tool.foro]" not in (target / "pyproject.toml").read_text()
     assert (target / "uv.lock").exists()
     assert (target / "README.md").exists()
-    assert (target / ".gitignore").exists()
+    # .foro/ holds local agent working files (fetched API specs), never source.
+    assert ".foro/" in (target / ".gitignore").read_text().splitlines()
     assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
 
