@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from typer.testing import CliRunner
 
 from foro._manifest import parse_and_validate
@@ -190,6 +192,20 @@ def test_scaffold_new_git_init(tmp_path):
     scaffold_new(target, fields, git_init=True)
 
     assert (target / ".git").is_dir()
+
+
+def test_scaffold_new_locks_a_foro_that_binds_port(tmp_path):
+    """Unpinned, uv paired the newest fastmcp with foro 0.4.0, whose run()
+    binds $MCP_PORT rather than $PORT - a scaffold that passes check and its
+    own tests, then only deploys while the port happens to default to 8000.
+    0.11 is the first release that binds $PORT."""
+    target = tmp_path / "locked"
+    scaffold_new(target, ManifestFields(name="locked", entrypoint="server.py"))
+
+    lock = (target / "uv.lock").read_text()
+    locked = re.search(r'^name = "foro"\nversion = "([^"]+)"', lock, re.MULTILINE).group(1)
+
+    assert tuple(int(p) for p in locked.split(".")) >= (0, 11), locked
 
 
 def test_scaffold_new_respects_custom_entrypoint(tmp_path):
