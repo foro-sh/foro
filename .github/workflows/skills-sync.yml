@@ -1,6 +1,6 @@
 name: Skills Sync
 
-# The Claude Code and Codex plugins ship the same two skills. A symlink would
+# The Claude Code and Codex plugins ship the same skills. A symlink would
 # be cheaper, but Codex requires manifest paths to stay inside the plugin root,
 # so both trees hold real files and this job keeps them honest.
 
