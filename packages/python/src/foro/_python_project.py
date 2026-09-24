@@ -49,7 +49,7 @@ def detect_dependency_manager(build_dir: Path, override: str | None = None) -> s
     if has("package.json"):
         raise DependencyManagerError(
             "No recognised Python project, but this looks like a Node project - "
-            "add `runtime: node` to foro.yaml"
+            "set `runtime` to `node` in package.json's `foro` key"
         )
 
     raise DependencyManagerError(
