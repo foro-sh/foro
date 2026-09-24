@@ -1,18 +1,4 @@
-"""`foro dev` - run the server locally exactly as foro.sh will, then prove it
-would pass the platform's health gate. "If it passes here, it passes
-deployed."
-
-Two things layered on top of each other:
-  1. Start `uv run <entrypoint>` with $PORT set (matches
-     Dockerfile.template's run step), then TCP-probe the port the same way
-     foro-wrapper.sh's health sidecar does (a bare `socket.create_connection`,
-     nothing HTTP-specific) - this is what catches the stdio-transport
-     footgun `foro check` can only warn about: a server on stdio never opens
-     the port, so the probe times out.
-  2. Once the port's open, do a real MCP initialize handshake and list the
-     server's tools - a stronger signal than the platform's own probe gives,
-     but cheap to add once the port's confirmed open.
-"""
+"""Run the server locally the way foro.sh will, then TCP-probe and handshake."""
 
 from __future__ import annotations
 
@@ -32,7 +18,7 @@ POLL_INTERVAL = 0.5
 
 
 class DevError(Exception):
-    """The server never became healthy within the timeout."""
+    pass
 
 
 @dataclass
@@ -45,23 +31,14 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
     from dotenv import dotenv_values
 
     build_dir = repo_dir / build_path
-    # A repo-root .env is a local-dev convenience only - the platform injects
-    # secrets as real env vars at deploy time, never a file. Silently a no-op
-    # when .env doesn't exist (dotenv_values returns {} for a missing path).
     dotenv = {k: v for k, v in dotenv_values(repo_dir / ".env").items() if v is not None}
-    # FASTMCP_SHOW_SERVER_BANNER goes first so a shell export or a .env entry
-    # still wins - it's a default, not a policy. This is the one place the
-    # variable reliably bites: fastmcp reads it into its settings object at
-    # import time, and here it's set before the child interpreter even
-    # starts, which foro.run() (already inside that process) cannot do.
+    # FASTMCP_SHOW_SERVER_BANNER is read at import time. Set it in the child
+    # env before the interpreter starts. A shell export or .env entry wins.
     env = {
         "FASTMCP_SHOW_SERVER_BANNER": "false",
         **os.environ,
         **dotenv,
-        # Exactly what the platform injects (container-spec.ts), and last so
-        # the manifest's port wins over a stray PORT in .env - a dev run on a
-        # different port than the one probed reads as a server that never came
-        # up.
+        # Last so the manifest port wins over PORT in .env.
         "PORT": str(port),
     }
     return popen(
@@ -83,10 +60,6 @@ def port_is_open(port: int, timeout: float = 1.0) -> bool:
 def wait_for_port(
     port: int, timeout: float = DEFAULT_TIMEOUT, process: subprocess.Popen | None = None
 ) -> bool:
-    """Wait for something to accept a TCP connection on `port`.
-
-    Pass `process` to stop waiting on a server that has already died.
-    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if process is not None and process.poll() is not None:
@@ -97,8 +70,6 @@ def wait_for_port(
     return False
 
 
-# A stdio server here gets DEVNULL for stdin and exits at once rather than
-# hanging, so both failure modes want this hint.
 _STDIO_HINT = (
     "If the entrypoint calls a plain server.run() / mcp.run(), that defaults to "
     "stdio transport, which never opens a port and would fail foro.sh's deploy "
@@ -109,7 +80,6 @@ _STDIO_HINT = (
 def _unhealthy_reason(process: subprocess.Popen, port: int, timeout: float) -> str:
     status = process.poll()
     if status is not None:
-        # The child inherits our stdout/stderr, so its output is on screen.
         return (
             f"the server exited with status {status} without opening port {port} - "
             f"its output is above. {_STDIO_HINT}"
@@ -118,16 +88,10 @@ def _unhealthy_reason(process: subprocess.Popen, port: int, timeout: float) -> s
 
 
 def mcp_handshake(port: int) -> list[str]:
-    """The same handshake `foro verify` runs against a deployed URL - see
-    _mcp.py, which owns it so the two can't disagree about what working means."""
     return handshake(local_url(port))
 
 
 def stop(process: subprocess.Popen) -> None:
-    """Shut down a server started by `run_dev`, escalating to a kill if it
-    doesn't go quietly. Everything holding one of these processes needs this
-    same sequence - the CLI on Ctrl+C and under `--once`, run_dev itself when
-    verification fails, and the tests - so it lives here once."""
     process.terminate()
     try:
         process.wait(timeout=5)
@@ -136,17 +100,9 @@ def stop(process: subprocess.Popen) -> None:
 
 
 def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[subprocess.Popen, DevResult]:
-    """Start the repo's server and verify it would pass foro.sh's deploy
-    health gate. Returns the running process (caller owns its lifecycle -
-    `stop()` it when done) plus the verified port and tool list. Raises
-    DevError if the server dies or the port never opens in time; the process
-    is cleaned up before raising.
-    """
     repo_dir = Path(repo_dir)
     manifest = parse_and_validate(repo_dir, ".")
 
-    # Claim the port first: afterwards the probe cannot tell whose listener
-    # it found, and a squatter reads as a healthy server.
     if port_is_open(manifest.port):
         raise DevError(
             f"port {manifest.port} is already in use - something else is listening on "

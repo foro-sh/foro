@@ -1,15 +1,4 @@
-"""The CLI's HTTP layer, on stdlib `urllib.request`.
-
-Deliberately no dependency: a login command is not worth adding httpx for.
-The cost is verbosity - POSTing JSON by hand, and reading error bodies off
-non-2xx responses, which matters more than it sounds like because the device
-flow's whole state machine lives in 400 bodies. `HTTPError` *is* the response,
-so `ApiError.payload` carries the parsed body rather than losing it.
-
-Everything goes through here so that if a later command makes the stdlib route
-genuinely painful, swapping the implementation is this one file and no call
-sites.
-"""
+"""HTTP client on stdlib urllib.request."""
 
 from __future__ import annotations
 
@@ -22,13 +11,10 @@ from importlib.metadata import version
 from typing import Any
 
 TIMEOUT = 30.0
-# A 50 MiB archive on a domestic uplink takes longer than a JSON round trip.
 UPLOAD_TIMEOUT = 300.0
 
 
 class ApiError(Exception):
-    """A non-2xx response. `payload` is the decoded body when it was JSON."""
-
     def __init__(self, status: int, payload: Any, message: str) -> None:
         super().__init__(message)
         self.status = status
@@ -36,7 +22,6 @@ class ApiError(Exception):
 
     @property
     def code(self) -> str | None:
-        """The `error` field the device-grant endpoints answer with."""
         if isinstance(self.payload, dict):
             value = self.payload.get("error")
             return value if isinstance(value, str) else None
@@ -44,11 +29,7 @@ class ApiError(Exception):
 
 
 def base_url(host: str) -> str:
-    # Both local dev stacks serve plain HTTP: the native one on localhost:3001,
-    # and the Docker one behind Traefik on foro.localhost, which terminates no
-    # TLS locally. RFC 6761 reserves the whole .localhost tree for the loopback,
-    # so matching the suffix can't reach anything off this machine. Nothing else
-    # is ever plaintext - a bearer token in the clear is a token gone.
+    # localhost and *.localhost are loopback (RFC 6761). Everything else is TLS.
     name = host.split(":")[0]
     local = name in ("localhost", "127.0.0.1") or name.endswith(".localhost")
     return f"{'http' if local else 'https'}://{host}"
@@ -63,7 +44,6 @@ def request(
     body: dict | None = None,
     timeout: float = TIMEOUT,
 ) -> Any:
-    """Returns the decoded JSON body, or None for an empty 2xx (204s)."""
     req = urllib.request.Request(f"{base_url(host)}{path}", method=method)
     req.add_header("Accept", "application/json")
     req.add_header("User-Agent", f"foro-cli/{version('foro')}")
@@ -93,9 +73,6 @@ def post_multipart(
     content: bytes,
     field: str = "file",
 ) -> Any:
-    """The upload routes are @fastify/multipart, and urllib has no encoder -
-    so this builds the body by hand. ~20 lines is the price of not adding a
-    dependency for two endpoints."""
     boundary = f"----foro{secrets.token_hex(16)}"
     body = b"".join(
         [
@@ -124,15 +101,8 @@ def post_multipart(
 
 
 def stream_sse(path: str, *, host: str, token: str) -> Iterator[dict]:
-    """Yield each SSE payload until the `{"done": true}` sentinel closes the
-    stream.
-
-    Three things the server's shape dictates: `:ping` comment lines are
-    heartbeats and carry no data; the sentinel is how a finished deploy is
-    signalled, so it terminates the iterator rather than being yielded; and no
-    read timeout is set, because an idle-but-healthy stream between heartbeats
-    is normal and killing it would look like a failed deploy.
-    """
+    """Yield each SSE `data:` payload. `{"done": true}` ends the iterator.
+    No read timeout: idle time between heartbeats is expected."""
     req = urllib.request.Request(f"{base_url(host)}{path}")
     req.add_header("Accept", "text/event-stream")
     req.add_header("User-Agent", f"foro-cli/{version('foro')}")
@@ -161,11 +131,6 @@ def stream_sse(path: str, *, host: str, token: str) -> Iterator[dict]:
 
 
 def explain(err: ApiError, *, action: str) -> str:
-    """Turn an API refusal into a sentence that says what to do about it.
-
-    Every one of these is a real reply from the platform - a raw JSON dump
-    would leave the user to work out which of them they hit.
-    """
     reason = err.payload.get("reason") if isinstance(err.payload, dict) else None
     message = err.payload.get("error") if isinstance(err.payload, dict) else None
 
@@ -187,8 +152,6 @@ def explain(err: ApiError, *, action: str) -> str:
         return message or "object storage isn't configured on this instance, so uploads are off"
     if err.status == 409:
         return message or f"cannot {action} right now"
-    # 422's message is already written for a human, and 404/500 carry the
-    # server's own wording - print it rather than inventing a worse one.
     return message or str(err)
 
 
@@ -204,6 +167,4 @@ def _decode(raw: bytes) -> Any:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # A proxy or error page rather than the API - keep the text, the
-        # caller's message is more useful with it than without.
         return raw.decode(errors="replace")
