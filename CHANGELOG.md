@@ -1,3 +1,25 @@
+## 0.14.0 (2026-09-24)
+
+* Merge branch 'main' into feat/issue-31-deploy ([f00fa4d](https://github.com/foro-sh/foro/commit/f00fa4d))
+* Merge main into feat/issue-31-deploy ([c9d2b7e](https://github.com/foro-sh/foro/commit/c9d2b7e))
+* Merge origin/main into feat/issue-31-deploy ([53f348e](https://github.com/foro-sh/foro/commit/53f348e))
+* Merge pull request #102 from foro-sh/dependabot/npm_and_yarn/packages/typescript/npm-1283acccde ([b265c0c](https://github.com/foro-sh/foro/commit/b265c0c)), closes [#102](https://github.com/foro-sh/foro/issues/102)
+* Merge pull request #103 from foro-sh/dependabot/uv/packages/python/uv-000da262ea ([b6a4db9](https://github.com/foro-sh/foro/commit/b6a4db9)), closes [#103](https://github.com/foro-sh/foro/issues/103)
+* Merge pull request #109 from foro-sh/dependabot/github_actions/astral-sh/setup-uv-10.1.0 ([63f8ef4](https://github.com/foro-sh/foro/commit/63f8ef4)), closes [#109](https://github.com/foro-sh/foro/issues/109)
+* Merge pull request #36 from foro-sh/feat/issue-31-deploy ([4c44d87](https://github.com/foro-sh/foro/commit/4c44d87)), closes [#36](https://github.com/foro-sh/foro/issues/36)
+* fix(python): keep foro deploy usable without a TTY ([b1c6451](https://github.com/foro-sh/foro/commit/b1c6451))
+* fix(python): survive a damaged link file and a pre-1980 mtime ([83171b7](https://github.com/foro-sh/foro/commit/83171b7))
+* chore(deps-dev): bump @types/node ([83f08ed](https://github.com/foro-sh/foro/commit/83f08ed))
+* chore(deps): bump astral-sh/setup-uv from 10.0.1 to 10.1.0 ([3ce0d4d](https://github.com/foro-sh/foro/commit/3ce0d4d))
+* chore(deps): bump the uv group across 1 directory with 2 updates ([c241531](https://github.com/foro-sh/foro/commit/c241531))
+* docs: make the quickstart end-to-end terminal ([ff0cb9c](https://github.com/foro-sh/foro/commit/ff0cb9c))
+* docs(python): document foro auth in the package README ([d1ad7f5](https://github.com/foro-sh/foro/commit/d1ad7f5))
+* feat(python): add credential storage and a stdlib HTTP layer ([9448942](https://github.com/foro-sh/foro/commit/9448942))
+* feat(python): add foro auth login/status/logout/token ([7013564](https://github.com/foro-sh/foro/commit/7013564)), closes [foro-sh/foro#30](https://github.com/foro-sh/foro/issues/30) [foro-sh/platform#551](https://github.com/foro-sh/platform/issues/551)
+* feat(python): add foro deploy, logs, projects, link and open ([731b0d0](https://github.com/foro-sh/foro/commit/731b0d0))
+* feat(python): add multipart, SSE and error mapping to the API client ([47ce3bb](https://github.com/foro-sh/foro/commit/47ce3bb))
+* feat(python): add the deploy archive builder and directory link ([e912715](https://github.com/foro-sh/foro/commit/e912715))
+
 ## <small>0.13.1 (2026-09-13)</small>
 
 * Merge pull request #105 from foro-sh/fix/platform-951-gitignore-foro ([a5bccd5](https://github.com/foro-sh/foro/commit/a5bccd5)), closes [#105](https://github.com/foro-sh/foro/issues/105)
