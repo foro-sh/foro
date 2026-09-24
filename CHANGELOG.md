@@ -1,3 +1,11 @@
+## 0.15.0 (2026-09-24)
+
+* Merge pull request #110 from foro-sh/feat/dev-once ([6d8ee66](https://github.com/foro-sh/foro/commit/6d8ee66)), closes [#110](https://github.com/foro-sh/foro/issues/110)
+* Merge pull request #111 from foro-sh/feat/deploy-skills ([583f441](https://github.com/foro-sh/foro/commit/583f441)), closes [#111](https://github.com/foro-sh/foro/issues/111)
+* Merge remote-tracking branch 'origin/main' into feat/dev-once ([8205681](https://github.com/foro-sh/foro/commit/8205681))
+* docs(plugins): rewrite deploy-to-foro around foro deploy, add debug-a-foro-deploy ([a1f9b77](https://github.com/foro-sh/foro/commit/a1f9b77)), closes [#40](https://github.com/foro-sh/foro/issues/40) [#36](https://github.com/foro-sh/foro/issues/36) [#40](https://github.com/foro-sh/foro/issues/40)
+* feat(python): add foro dev --once ([dfe4d9d](https://github.com/foro-sh/foro/commit/dfe4d9d)), closes [#51](https://github.com/foro-sh/foro/issues/51)
+
 ## 0.14.0 (2026-09-24)
 
 * Merge branch 'main' into feat/issue-31-deploy ([f00fa4d](https://github.com/foro-sh/foro/commit/f00fa4d))
