@@ -1,9 +1,10 @@
 """Build the zip `foro deploy` uploads.
 
 The platform's contract (apps/api/src/services/upload.ts) is strict in two
-ways worth encoding here rather than discovering as a 422: `foro.yaml` must sit
-at the *archive root* (zip the contents, not the folder containing them), and
-the compressed archive must fit in 50 MiB.
+ways worth encoding here rather than discovering as a 422: the project config
+file (`pyproject.toml` or `package.json`) must sit at the archive root (zip
+the contents, not the folder containing them), and the compressed archive
+must fit in 50 MiB.
 
 File selection defers to git rather than parsing .gitignore: in a repo,
 `git ls-files --cached --others --exclude-standard` is exactly the set git
@@ -20,6 +21,8 @@ import zipfile
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+
+from foro._manifest import CONFIG_FILES
 
 # Mirrors MAX_UPLOAD_BYTES in apps/api/src/services/upload.ts, which 413s past
 # it - checked here so the failure names the offending files instead.
@@ -89,9 +92,11 @@ def collect_files(repo_dir: Path) -> list[Path]:
 
 def build(repo_dir: Path) -> Archive:
     files = collect_files(repo_dir)
-    if not any(rel == Path("foro.yaml") for rel in files):
+    root_names = {rel.as_posix() for rel in files}
+    if not any(name in root_names for name in CONFIG_FILES.values()):
         raise ArchiveError(
-            "no foro.yaml at the root of this directory - run `foro init` here first"
+            "no pyproject.toml or package.json at the root of this directory - "
+            "run `foro init` here first"
         )
 
     buffer = BytesIO()

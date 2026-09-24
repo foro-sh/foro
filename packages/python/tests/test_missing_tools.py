@@ -45,7 +45,6 @@ def without(monkeypatch):
 
 
 def _project(tmp_path: Path) -> Path:
-    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: server.py\n")
     (tmp_path / "server.py").write_text("# mcp server\n")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     (tmp_path / "uv.lock").write_text("version = 1\n")

@@ -20,7 +20,7 @@ from foro._project_link import ProjectLink
 
 
 def _project(tmp_path, *, git=False):
-    (tmp_path / "foro.yaml").write_text("name: my-server\nentrypoint: server.py\n")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     (tmp_path / "server.py").write_text("# mcp server\n")
     if git:
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
@@ -36,11 +36,9 @@ def _names(archive: _archive.Archive) -> set[str]:
 
 
 def test_manifest_lands_at_the_archive_root(tmp_path):
-    # The platform rejects an archive whose foro.yaml is nested, so this is
-    # the difference between deploying and a 422.
     archive = _archive.build(_project(tmp_path))
 
-    assert "foro.yaml" in _names(archive)
+    assert "pyproject.toml" in _names(archive)
     assert archive.file_count == 2
 
 
@@ -85,7 +83,7 @@ def test_outside_a_git_repo_the_walk_still_excludes_junk(tmp_path):
 
     names = _names(_archive.build(tmp_path))
 
-    assert "foro.yaml" in names
+    assert "pyproject.toml" in names
     assert not any("node_modules" in name for name in names)
 
 
