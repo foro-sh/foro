@@ -75,7 +75,8 @@ for the full reference.
 ```
 
 Adds `/foro:create-foro-project`, `/foro:add-foro-to-existing-server`,
-`/foro:deploy-to-foro` and `/foro:design-mcp-tools`, plus a docs MCP server.
+`/foro:deploy-to-foro`, `/foro:debug-a-foro-deploy`, `/foro:design-mcp-tools`
+and `/foro:wrap-an-http-api`, plus a docs MCP server.
 There's a [Codex counterpart](plugins/codex) with the same skills.
 
 ## Deploying

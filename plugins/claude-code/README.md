@@ -7,7 +7,7 @@ things that already exist but that agents can't reach on their own:
 - **The foro.sh docs MCP server** (`docs.foro.sh`, public, no auth) —
   exposed as the `foro-docs` server so skills can look docs up live instead of
   inlining copy that goes stale.
-- **Five skills** covering both ways in (a new project, or one that already
+- **Six skills** covering both ways in (a new project, or one that already
   exists), building on an existing HTTP API, the deploy itself, and the tool
   design that decides what a server costs to use.
 
@@ -59,11 +59,16 @@ Skills are namespaced by the plugin name:
   almost always on stdio, which never opens a port and fails the deploy health
   check 60 seconds in), records anything foro can't infer via `foro init`, and proves it with
   `foro dev` before anything reaches the cloud.
-- **`/foro:deploy-to-foro`** — get it live. `git init` → commit →
-  `gh repo create --push`, then the dashboard step (pick repo, add secrets,
-  Deploy — honestly a browser step, there's no user deploy API yet). The result
-  is a random, immutable `https://<slug>.foro.sh` URL. When a deploy fails, it
-  points at the build-vs-deploy log split and the usual suspects.
+- **`/foro:deploy-to-foro`** — get it live. `foro auth login` (a device flow
+  the skill hands to the user rather than faking), then `foro deploy`, which
+  uploads the working tree or builds a linked repo's branch and streams the
+  build. It names the secrets to set in the dashboard, and claims success only
+  once `foro verify` lists the tools at the random, immutable
+  `https://<slug>.foro.sh` URL.
+- **`/foro:debug-a-foro-deploy`** — when a deploy fails or the URL doesn't
+  answer. Reads the right log first (`foro logs --build` vs `--deploy`),
+  walks the usual suspects, and reproduces with `foro dev` instead of
+  redeploying to test a guess.
 - **`/foro:design-mcp-tools`** — shape the tools themselves. A tool's schema is
   resent on every request whether it's called or not, so descriptions, enum
   size, and tool count are a standing cost on every message. Covers the levers
@@ -79,13 +84,9 @@ Skills are namespaced by the plugin name:
 
 - The [`foro` CLI](https://pypi.org/project/foro/) via `uv` — the skills run
   `uvx foro ...`, so no separate install is needed beyond `uv`.
-- [`gh`](https://cli.github.com/) for the GitHub push step in `deploy-to-foro`.
+- A [foro.sh](https://foro.sh) account for `deploy-to-foro` and `debug-a-foro-deploy`.
 
 ## Scope
 
 Skills only. No hooks, no agents, no LSP config — nothing here needs to
 intercept tool calls or run in the background.
-
-Deliberately absent: a `debug-foro-deploy` skill. There's no user-facing logs
-API, so it could only say which dashboard tab to open, which `deploy-to-foro`
-already does. Worth writing once we know the top three real failures.
