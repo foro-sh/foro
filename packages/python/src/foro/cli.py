@@ -107,23 +107,14 @@ def check(
 
 
 def _sanitize_name(raw: str) -> str:
-    """A directory basename isn't guaranteed to be a valid `name:` - lowercase
-    it and collapse anything outside [a-z0-9-] so the prompt's default is
-    actually acceptable if the user just hits enter."""
     slug = re.sub(r"[^a-z0-9-]+", "-", raw.lower()).strip("-")
     return slug[:48] or "my-server"
 
 
-# ponytail: a module global rather than a `yes` parameter threaded through
-# both init modes and all six prompt helpers - `--yes` is set once, at the
-# only entrypoint that can set it.
 _assume_yes = False
 
 
 def _prompt(*args, default, **kwargs):
-    """Under `--yes`, every prompt answers itself with its default. The
-    defaults are the same values the validation loops accept, so callers keep
-    their loop and simply pass through on the first iteration."""
     return default if _assume_yes else typer.prompt(*args, default=default, **kwargs)
 
 
@@ -152,9 +143,6 @@ def _prompt_entrypoint(default: str) -> str:
 
 
 def _prompt_runtime_version(runtime: str, default: str) -> str:
-    # Versions are allowlisted per runtime, so the prompt is too. There is no
-    # runtime prompt yet: with one runtime, asking would be a question with a
-    # single valid answer.
     versions = RUNTIME_VERSIONS[runtime]
     while True:
         value = _prompt(f"{runtime.capitalize()} version ({'/'.join(versions)})", default=default)
@@ -223,9 +211,6 @@ def _init_from_scratch(target: Path) -> None:
     port = _prompt_port(DEFAULT_PORT)
     git_init = _confirm("Initialize a git repo here?", default=True)
 
-    # Fixed, opinionated structure (app.py + tools/) - not a free-form
-    # filename choice like existing-repo mode's entrypoint. See
-    # scaffold_new's docstring.
     fields = ManifestFields(name=name, entrypoint="server.py", runtime_version=runtime_version, port=port)
     try:
         scaffold_new(target, fields, git_init=git_init)
@@ -233,7 +218,6 @@ def _init_from_scratch(target: Path) -> None:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
     except GitInitError as err:
-        # The project is written and valid; only the repo is missing.
         typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
@@ -247,9 +231,6 @@ def _init_existing(dir_path: Path) -> None:
     entrypoint_default = candidates[0] if candidates else "server.py"
     entrypoint = _prompt_entrypoint(entrypoint_default)
 
-    # Reuses the platform's own detection signal so the pre-filled answer
-    # matches what the platform would infer at deploy time - see
-    # detect_existing_dependency_manager's docstring.
     detected_manager = detect_existing_dependency_manager(dir_path)
     dependency_manager = _prompt_dependency_manager(detected_manager or "uv")
 
@@ -262,9 +243,6 @@ def _init_existing(dir_path: Path) -> None:
         entrypoint=entrypoint,
         runtime_version=runtime_version,
         port=port,
-        # Only recorded as an explicit override when it differs from what
-        # the platform would auto-detect anyway (or when nothing could be
-        # auto-detected) - redundant otherwise.
         dependency_manager=dependency_manager if dependency_manager != detected_manager else None,
     )
 
@@ -285,17 +263,12 @@ def _init_existing(dir_path: Path) -> None:
     if wrote:
         typer.secho(f"✓ updated {dir_path / 'pyproject.toml'}", fg=typer.colors.GREEN)
     else:
-        # Nothing to write is the good outcome, not a no-op worth apologising
-        # for: the platform infers every answer given.
         typer.secho("✓ nothing to configure - this project deploys as it is", fg=typer.colors.GREEN)
 
-    # Not already a repo, and deploying to foro.sh means pushing to GitHub -
-    # worth asking here too, not just in from-scratch mode.
     if not (dir_path / ".git").exists() and _confirm("Initialize a git repo here?", default=True):
         try:
             init_git_repo(dir_path)
         except GitInitError as err:
-            # The config is already written, which is all this mode promises.
             typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
 
@@ -322,9 +295,6 @@ def dev(
     typer.secho(f"✓ would pass foro.sh's health check (port {result.port})", fg=typer.colors.GREEN)
     typer.echo("Tools: " + (", ".join(result.tool_names) if result.tool_names else "(none)"))
 
-    # run_dev has already proven everything `foro dev` reports - the port
-    # opened and a real MCP handshake listed those tools - so under --once
-    # there is nothing left to wait for.
     if once:
         stop(process)
         return
@@ -394,8 +364,6 @@ def auth_login(
         )
         raise typer.Exit(code=1)
 
-    # Read stdin before anything can prompt on it - the confirm below would
-    # otherwise eat the token as its answer.
     token = _read_token_from_stdin() if with_token else None
 
     existing = _config.load(host)
@@ -436,8 +404,6 @@ def _read_token_from_stdin() -> str:
 
 
 def _open_browser(url: str) -> None:
-    """Best effort - it raises on a box with no browser, which is exactly
-    where the printed URL is the point."""
     try:
         webbrowser.open(url)
     except Exception:
@@ -459,21 +425,15 @@ def _run_device_flow(host: str) -> str:
             f"(or paste {grant.verification_uri_complete})"
         )
     else:
-        # No terminal to press Enter on. The grant still works from any
-        # browser, so print the URL and poll rather than dying on EOFError.
         typer.echo(f"Open this to authorize: {grant.verification_uri_complete}")
     try:
         if interactive:
             try:
                 input()
             except EOFError:
-                # stdin was a tty when asked and closed underneath us.
                 typer.echo("")
             _open_browser(grant.verification_uri_complete)
 
-        # ponytail: a redrawn line, not a spinner library - it has to read as
-        # progress rather than a hang, and that's all it takes. Skipped off a
-        # terminal, where \r is just noise in a log.
         def tick(elapsed: float) -> None:
             if sys.stdout.isatty():
                 typer.echo(f"\r- Waiting for authorization... {int(elapsed)}s", nl=False)
@@ -512,9 +472,6 @@ def auth_status() -> None:
     typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
     if identity.workspace:
         typer.echo(f"    Workspace: {identity.workspace}")
-    # Same 8 characters of the random part that /account renders as
-    # `token_prefix`, so you can tell which row on the dashboard is this
-    # machine's before revoking it.
     typer.echo(f"    Token: {creds.token[: len(TOKEN_PREFIX) + 8]}… ({where})")
 
 
@@ -538,8 +495,6 @@ def auth_logout() -> None:
         revoke(host, creds.token)
         typer.secho("✓ Logged out; token revoked", fg=typer.colors.GREEN)
     except (ApiError, AuthError) as err:
-        # Deleting locally regardless is the point - an offline or
-        # already-revoked token must not strand the credential on disk.
         typer.secho(f"warning: could not revoke server-side ({err})", fg=typer.colors.YELLOW)
         typer.secho("✓ Logged out locally; revoke it on /account", fg=typer.colors.GREEN)
 
@@ -561,8 +516,6 @@ def _fail(err: ApiError, action: str) -> typer.Exit:
 
 
 def _resolve(path: Path, project: str | None) -> tuple[str, str, str]:
-    """Every project command needs the same three things: a host, a token, and
-    the slug this directory acts on."""
     host, creds = _require_credentials()
     try:
         return host, creds.token, projects.resolve_slug(path, host, project)
@@ -587,8 +540,6 @@ def deploy(
 
     host, creds = _require_credentials()
 
-    # Never upload something that can't build - the platform would only tell
-    # us the same thing 60 seconds later, from further away.
     if not skip_check and not repo:
         result = run_check(path)
         if not result.ok:
@@ -626,7 +577,6 @@ def deploy(
 def _offer_gitignore(repo_dir: Path) -> None:
     if _project_link.is_gitignored(repo_dir):
         return
-    # A prompt here would abort a scripted or agent-run deploy mid-stream.
     if not sys.stdin.isatty():
         typer.echo(f"  add {_project_link.GITIGNORE_ENTRY} to .gitignore - the link is per-clone")
         return
@@ -635,12 +585,6 @@ def _offer_gitignore(repo_dir: Path) -> None:
 
 
 def _stream_deploy(host: str, token: str, started) -> None:
-    """The deploy narrative in the foreground, raw build output behind it.
-
-    Two channels, so two streams: the build log is where a failure's actual
-    cause usually is, and waiting for the deploy stream to finish before
-    showing it would defeat the point of watching.
-    """
     build_lines: list[str] = []
 
     def pump_build() -> None:
@@ -650,8 +594,6 @@ def _stream_deploy(host: str, token: str, started) -> None:
                 build_lines.append(line)
                 typer.secho(f"  │ {line}", dim=True)
         except ApiError:
-            # The build channel is a nicety; losing it must not fail a deploy
-            # that the deploy channel is still reporting on truthfully.
             pass
 
     pump = threading.Thread(target=pump_build, daemon=True)
@@ -743,7 +685,7 @@ def logs(
         raise _fail(err, "read logs") from None
 
 
-# No `no_args_is_help`: bare `foro projects` is the list, not a help screen.
+# Bare `foro projects` lists; do not set no_args_is_help.
 projects_app = typer.Typer(help="Inspect your foro.sh projects.")
 app.add_typer(projects_app, name="projects")
 

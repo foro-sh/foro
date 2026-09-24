@@ -1,15 +1,5 @@
-// Generates src/_generated-manifest-cases.ts from the canonical shared table.
-//
-// The table itself lives in the Python package (src/foro/manifest-cases.json)
-// because that is where it is consumed first - `foro check` runs it against
-// _manifest.py. There is deliberately only one copy of it in this repo; this
-// script inlines that copy into a TypeScript module so foro-sh/platform can
-// `import { manifestCases } from '@foro-sh/foro/manifest-cases'` and run the
-// exact same table against its own parseAndValidate (foro-sh/foro#5).
-//
-// Inlining rather than shipping the .json keeps the consumer side trivial: no
-// import attributes, no fs access relative to a bundled test file, and the
-// reasons are checked against the ManifestRejectionReason union at build time.
+// Inlines packages/python/src/foro/manifest-cases.json as a TypeScript module
+// so foro-sh/platform can import the same table.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -21,9 +11,6 @@ const TARGET = join(here, '..', 'src', '_generated-manifest-cases.ts')
 
 const cases = JSON.parse(readFileSync(SOURCE, 'utf8'))
 
-// A silently empty or malformed table would publish a green-but-vacuous test
-// suite on the platform side, which is the exact failure this whole mechanism
-// exists to prevent. Fail the build instead.
 if (!Array.isArray(cases) || cases.length === 0) {
   throw new Error(`${SOURCE}: expected a non-empty array of cases`)
 }
@@ -55,9 +42,7 @@ const banner = [
   '',
 ].join('\n')
 
-// `as const` narrows every `reason` to a string literal, so the assignment in
-// manifest-cases.ts fails to compile the moment the JSON grows a reason the
-// ManifestRejectionReason union does not have.
+// `as const` so a new reason fails the ManifestRejectionReason assignment.
 writeFileSync(
   TARGET,
   `${banner}export const rawManifestCases = ${JSON.stringify(cases, null, 2)} as const\n`,

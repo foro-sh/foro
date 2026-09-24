@@ -21,9 +21,6 @@ from foro.init import (
 runner = CliRunner()
 
 
-# --- detect_entrypoint_candidates ---------------------------------------
-
-
 def test_detect_entrypoint_finds_fastmcp_server(tmp_path):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
 
@@ -50,9 +47,6 @@ def test_detect_entrypoint_checks_nested_candidate(tmp_path):
     assert detect_entrypoint_candidates(tmp_path) == ["src/server.py"]
 
 
-# --- detect_existing_dependency_manager ---------------------------------
-
-
 def test_detect_dependency_manager_from_uv_lock(tmp_path):
     (tmp_path / "uv.lock").write_text("")
 
@@ -61,9 +55,6 @@ def test_detect_dependency_manager_from_uv_lock(tmp_path):
 
 def test_detect_dependency_manager_none_when_nothing_present(tmp_path):
     assert detect_existing_dependency_manager(tmp_path) is None
-
-
-# --- foro_table / write_foro_table / existing_foro_table_diff -----------
 
 
 def _pyproject(tmp_path, extra=""):
@@ -120,7 +111,6 @@ def test_write_foro_table_replaces_a_table_that_is_already_there(tmp_path):
     text = (tmp_path / "pyproject.toml").read_text()
     assert "port = 9100" in text
     assert "port = 9000" not in text
-    # The table it sits between is left exactly where it was.
     assert "[tool.ruff]\nline-length = 100\n" in text
 
 
@@ -155,9 +145,6 @@ def test_existing_foro_table_diff_shows_changes(tmp_path):
     assert "+port = 9100" in diff
 
 
-# --- scaffold_new ---------------------------------------------------------
-
-
 def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     target = tmp_path / "scaffolded"
     fields = ManifestFields(name="scaffolded", entrypoint="server.py", runtime_version="3.12", port=8000)
@@ -170,11 +157,9 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "tools" / "add.py").exists()
     assert (target / "tests" / "test_tools.py").exists()
     assert (target / "pyproject.toml").exists()
-    # A scaffold is the shape inference expects, so it says nothing extra.
     assert "[tool.foro]" not in (target / "pyproject.toml").read_text()
     assert (target / "uv.lock").exists()
     assert (target / "README.md").exists()
-    # .foro/ holds local agent working files (fetched API specs), never source.
     assert ".foro/" in (target / ".gitignore").read_text().splitlines()
     assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
@@ -196,10 +181,7 @@ def test_scaffold_new_git_init(tmp_path):
 
 
 def test_scaffold_new_locks_a_foro_that_binds_port(tmp_path):
-    """Unpinned, uv paired the newest fastmcp with foro 0.4.0, whose run()
-    binds $MCP_PORT rather than $PORT - a scaffold that passes check and its
-    own tests, then only deploys while the port happens to default to 8000.
-    0.11 is the first release that binds $PORT."""
+    """Locked foro must be >=0.11 so run() binds $PORT, not $MCP_PORT."""
     target = tmp_path / "locked"
     scaffold_new(target, ManifestFields(name="locked", entrypoint="server.py"))
 
@@ -210,9 +192,6 @@ def test_scaffold_new_locks_a_foro_that_binds_port(tmp_path):
 
 
 def test_scaffold_new_respects_custom_entrypoint(tmp_path):
-    # app.py/tools/ are fixed structural filenames, independent of the
-    # entrypoint's own name - "custom entrypoint" only ever means the file
-    # the platform starts.
     target = tmp_path / "custom-entry"
     fields = ManifestFields(name="custom-entry", entrypoint="run.py")
 
@@ -222,13 +201,7 @@ def test_scaffold_new_respects_custom_entrypoint(tmp_path):
     assert not (target / "server.py").exists()
     assert (target / "app.py").exists()
 
-    # The generated wiring test imports the entrypoint by module name, so a
-    # renamed entrypoint has to follow through into it - otherwise the test
-    # dies on ModuleNotFoundError for a server.py that was never written.
     assert "importlib.import_module('run')" in (target / "tests" / "test_tools.py").read_text()
-
-
-# --- CLI: from-scratch mode ----------------------------------------------
 
 
 def test_cli_init_from_scratch(tmp_path):
@@ -258,25 +231,18 @@ def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):
     assert "not empty" in result.stdout
 
 
-# --- CLI: existing-repo mode -----------------------------------------------
-
-
 def test_cli_init_existing_repo_touches_only_pyproject(tmp_path, monkeypatch):
     (tmp_path / "server.py").write_text('from fastmcp import FastMCP\nmcp = FastMCP("x")\n')
     (tmp_path / "uv.lock").write_text("")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
     monkeypatch.chdir(tmp_path)
 
-    # accept all detected defaults, then decline the trailing git-init prompt
     result = runner.invoke(app, ["init"], input="\n\n\n\n\nn\n")
 
     assert result.exit_code == 0, result.stdout
     manifest = parse_and_validate(tmp_path, ".")
     assert manifest.entrypoint == "server.py"
-    # detected uv.lock -> no explicit override needed
     assert manifest.dependency_manager is None
-    # Every answer was one inference already produces, so the file it was
-    # asked about is the only one touched, and even that is left alone.
     assert (tmp_path / "pyproject.toml").read_text() == '[project]\nname = "my-server"\n'
     assert not (tmp_path / "foro.yaml").exists()
     assert not (tmp_path / ".git").exists()
@@ -316,11 +282,6 @@ def test_cli_init_existing_repo_rejects_non_py_entrypoint_and_reprompts(tmp_path
     result = runner.invoke(
         app,
         ["init"],
-        # a bad entrypoint answer (a port number, not a path), then a valid
-        # one, then the rest as defaults, then decline git init -
-        # regression test for a real report: an unvalidated Entrypoint
-        # prompt accepted "8000" verbatim and wrote generated server code
-        # to a file literally named "8000".
         input="8000\nserver.py\n\n\n\n\nn\n",
     )
 
@@ -338,7 +299,6 @@ def test_cli_init_existing_repo_declines_overwrite(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
 
-    # a different port, then defaults, then decline the overwrite
     result = runner.invoke(app, ["init"], input="\n\n\n9100\nn\n")
 
     assert result.exit_code == 1

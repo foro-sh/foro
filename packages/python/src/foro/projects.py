@@ -1,5 +1,4 @@
-"""Reading the platform's project state: list, show, and the directory↔project
-link the other commands resolve through."""
+"""List, show, and resolve the directory-to-project link."""
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from foro._project_link import ProjectLink
 
 
 class ProjectError(Exception):
-    """No project could be resolved for what was asked."""
+    pass
 
 
 def list_projects(host: str, token: str) -> list[dict]:
@@ -26,8 +25,6 @@ def list_deployments(host: str, token: str, slug: str) -> list[dict]:
 
 
 def resolve_slug(repo_dir: Path, host: str, override: str | None) -> str:
-    """`--project` wins, then the link file. Raises rather than guessing: a
-    command that acts on the wrong project is worse than one that stops."""
     if override:
         return override
     link = _project_link.load(repo_dir, host)
@@ -40,8 +37,6 @@ def resolve_slug(repo_dir: Path, host: str, override: str | None) -> str:
 
 
 def link(repo_dir: Path, host: str, token: str, slug: str) -> dict:
-    """Adopt a project created elsewhere. Fetched first so a typo'd slug fails
-    here rather than on the next deploy."""
     project = get_project(host, token, slug)
     _project_link.save(repo_dir, ProjectLink(host=host, slug=slug))
     return project

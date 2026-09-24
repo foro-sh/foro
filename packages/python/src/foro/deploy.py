@@ -1,17 +1,4 @@
-"""`foro deploy` - working tree to a live URL.
-
-The design fork is what an unlinked directory means. It deploys as an *upload*
-project: `check` and `dev` already operate on the working tree, and "`foro dev`
-passed, now ship exactly that" is the promise the CLI makes. Requiring a GitHub
-remote, a push, and a repo-picker round trip before the first deploy throws
-away the one thing a terminal is good at.
-
-A directory already linked to a `github` project is the opposite case: that
-project builds from its branch, so uploading the working tree would be a lie.
-There the CLI triggers the branch build and warns about anything local that
-won't be in it - the single most likely "why isn't my change live" question,
-answered before it's asked.
-"""
+"""Create or update a project, then trigger a build."""
 
 from __future__ import annotations
 
@@ -22,12 +9,11 @@ from pathlib import Path
 from foro import _api, _archive, _project_link
 from foro._project_link import ProjectLink
 
-# What POST /projects/:slug/deploy answers with while the worker builds.
 IN_FLIGHT = ("queued", "building", "starting")
 
 
 class DeployError(Exception):
-    """The deploy could not be started, with a reason worth showing."""
+    pass
 
 
 @dataclass
@@ -39,8 +25,6 @@ class Started:
 
 
 def local_changes_warning(repo_dir: Path) -> str | None:
-    """What a branch build will *not* contain. None when the tree is clean and
-    pushed, or when this isn't a git repo (nothing to compare against)."""
     def git(*args: str) -> str | None:
         try:
             done = subprocess.run(
@@ -56,7 +40,6 @@ def local_changes_warning(repo_dir: Path) -> str | None:
     excluded = []
     if git("status", "--porcelain"):
         excluded.append("uncommitted changes")
-    # Fails when the branch has no upstream, which is its own, worse problem.
     unpushed = git("rev-list", "--count", "@{u}..HEAD")
     no_upstream = unpushed is None
     if not no_upstream and unpushed != "0":
@@ -84,11 +67,6 @@ def deploy(
     force_repo: bool = False,
     on_step=None,
 ) -> Started:
-    """Create or update the project as needed, then trigger the build.
-
-    `on_step(message)` reports progress; this owns the decisions, not the
-    printing.
-    """
     def step(message: str) -> None:
         if on_step:
             on_step(message)
@@ -162,8 +140,6 @@ def _build(repo_dir: Path, step) -> _archive.Archive:
 
 
 def stream_deploy(host: str, token: str, slug: str, deployment_id: str):
-    """The orchestration narrative: clone, manifest validation, container
-    lifecycle, health check, failure reason."""
     return _api.stream_sse(
         f"/api/projects/{slug}/deployments/{deployment_id}/deploy/stream",
         host=host,
@@ -172,8 +148,6 @@ def stream_deploy(host: str, token: str, slug: str, deployment_id: str):
 
 
 def stream_build(host: str, token: str, slug: str, deployment_id: str):
-    """Raw `docker build` stdout/stderr - a separate channel from the deploy
-    narrative, and usually where a failure's actual cause is."""
     return _api.stream_sse(
         f"/api/projects/{slug}/deployments/{deployment_id}/build/stream",
         host=host,

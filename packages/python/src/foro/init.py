@@ -1,25 +1,5 @@
-"""`foro init` - scaffold a new MCP server, or record the little a project
-can't infer into the `pyproject.toml` it already has.
-
-From-scratch mode (a `name` is given, per foro-sh/foro#6): generate a
-minimal working project - always uv-based, since a freshly generated project
-has no dependency-manager ambiguity to resolve (that's what
-`dependency_manager` is for - see below). Its output is guaranteed to pass
-`foro check` (the golden round-trip: init -> check -> serves - see
-tests/test_init_dev_roundtrip.py), and it carries no `[tool.foro]` table at
-all: a scaffold is by construction the shape the platform infers.
-
-Existing-repo mode (no `name`, run inside a project that already has code):
-detect instead of prompting blind, reusing the platform's own detection
-signal (`_python_project.detect_dependency_manager`) so the pre-filled
-answer matches what the platform would infer at deploy time. Only the
-`[tool.foro]` table in `pyproject.toml` is written, and only when the answers
-differ from what deploy-time inference would produce anyway - never any
-source file.
-
-All interactive prompting lives in cli.py; this module is pure logic so it's
-testable without a terminal attached.
-"""
+"""`foro init` - scaffold a new project, or write `[tool.foro]` into an
+existing pyproject.toml. Prompting lives in cli.py."""
 
 from __future__ import annotations
 
@@ -40,9 +20,6 @@ from foro._proc import MissingToolError
 from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
 
-# The platform's own entry-file list, checked here in the same order - an
-# entrypoint it would find is one nothing has to be written down for. Only
-# files that also look like an MCP entrypoint count as a hit.
 ENTRYPOINT_CANDIDATES = PYTHON_ENTRYPOINT_CANDIDATES
 
 
@@ -57,20 +34,8 @@ class ManifestFields:
 
 
 def detect_entrypoint_candidates(dir_path: Path) -> list[str]:
-    """A candidate's content is checked for two markers, in priority order:
-
-    - `foro.run(` - only the real entrypoint ever calls this, so its
-      presence is decisive on its own. This is what a scaffold_new project's
-      server.py has (FastMCP construction lives in app.py, which never
-      calls foro.run) - without this priority, app.py would also match the
-      broader FastMCP( check below and produce a false double-hit.
-    - `FastMCP(` - a weaker fallback for a flat, single-file server that
-      constructs and runs everything in one place without foro.run (e.g.
-      calls `mcp.run()` directly).
-
-    Whenever any candidate matches on `foro.run(`, that's authoritative and
-    the weaker matches are discarded.
-    """
+    """Files that contain `foro.run(` win over files that only contain
+    `FastMCP(`. app.py constructs FastMCP but is not the entrypoint."""
     run_hits = []
     fastmcp_hits = []
     for candidate in ENTRYPOINT_CANDIDATES:
@@ -96,20 +61,13 @@ class MissingPyprojectError(Exception):
     """There is no pyproject.toml to write the `[tool.foro]` table into."""
 
 
-# A `[tool.foro]` table runs to the next table header. Good enough for a file
-# a person wrote: the pathological case is a bare `[` starting a line inside a
-# multi-line array, which no formatter produces.
+# Stops at the next table header. A bare `[` inside a multiline array would
+# also stop it; formatters do not produce that.
 _FORO_TABLE_RE = re.compile(r"^\[tool\.foro\]\n(?:(?!\[).*\n?)*", re.MULTILINE)
 
 
 def foro_table(fields: ManifestFields) -> str | None:
-    """The `[tool.foro]` table these answers need, or None when they need
-    none. Only values deploy-time inference can't reach are written: the
-    entrypoint when it isn't one of the files the platform looks for, a
-    non-default port, an interpreter pinned away from the default, and a
-    `dependency_manager` override. Writing anything else back would be
-    restating what pyproject.toml already says, one copy to drift out of
-    date."""
+    """`[tool.foro]` with only fields inference cannot supply, or None."""
     lines = []
     if fields.entrypoint not in ENTRYPOINT_CANDIDATES:
         lines.append(f'entrypoint = "{fields.entrypoint}"')
@@ -125,9 +83,7 @@ def foro_table(fields: ManifestFields) -> str | None:
 
 
 def existing_foro_table_diff(dir_path: Path, fields: ManifestFields) -> str | None:
-    """None if pyproject.toml carries no `[tool.foro]` table to protect.
-    Otherwise a unified diff of the current table against what init would
-    write - the "confirm or diff" the platform's issue text asks for."""
+    """Unified diff of the existing `[tool.foro]` table, or None if absent."""
     pyproject = dir_path / "pyproject.toml"
     if not pyproject.is_file():
         return None
@@ -142,9 +98,7 @@ def existing_foro_table_diff(dir_path: Path, fields: ManifestFields) -> str | No
 
 
 def write_foro_table(dir_path: Path, fields: ManifestFields) -> bool:
-    """Add or replace the `[tool.foro]` table in pyproject.toml. False when
-    there was nothing to write - the common case, and the one worth telling
-    the user about, since it means the repo already deploys as it stands."""
+    """Add or replace `[tool.foro]`. False when there is nothing to write."""
     pyproject = dir_path / "pyproject.toml"
     if not pyproject.is_file():
         raise MissingPyprojectError(
@@ -158,8 +112,6 @@ def write_foro_table(dir_path: Path, fields: ManifestFields) -> bool:
     if table is None:
         if existing is None:
             return False
-        # Answers that now match inference: drop the table rather than leave a
-        # stale one behind.
         pyproject.write_text(text[: existing.start()] + text[existing.end() :])
         return True
 
@@ -170,23 +122,6 @@ def write_foro_table(dir_path: Path, fields: ManifestFields) -> bool:
     return True
 
 
-# Modular by default (per FastMCP's own tool-organization guidance: one
-# file per tool, registered against a shared instance): `app.py` owns the
-# FastMCP instance so tool modules and the entrypoint can both import it
-# without a cycle; `server.py` (the entrypoint the platform looks for)
-# stays thin, only responsible for pulling `tools/` in for its
-# registration side effects and calling foro.run. Two files instead of one
-# is the smallest structure that avoids `tools/add.py` needing to import
-# back from the entrypoint it's imported by.
-#
-# Registration is a side effect of importing a tool module, which makes it
-# easy to break silently - a server missing its tools starts and serves
-# perfectly well, and only looks broken from the client. Two things guard
-# that: `load_tools()` is a real call rather than a bare `import tools`, so
-# it neither reads as dead code nor trips F401 (an unused-import autofix
-# would otherwise happily delete the line that makes the server work), and
-# it discovers modules itself, so a new file in `tools/` can't be left
-# unregistered. tests/test_tools.py asserts the wiring on top of that.
 _APP_TEMPLATE = '''from fastmcp import FastMCP
 
 mcp = FastMCP("{name}")
@@ -235,8 +170,7 @@ def add(a: int, b: int) -> int:
     return a + b
 '''
 
-# __ENTRYPOINT__ is substituted with the entrypoint's module name rather
-# than .format()ed in - the body is full of braces (set comprehension, f-string).
+# __ENTRYPOINT__ not .format(): the body is full of braces.
 _TEST_TOOLS_TEMPLATE = '''import subprocess
 import sys
 from pathlib import Path
@@ -251,18 +185,11 @@ def test_add():
 
 
 def test_entrypoint_registers_every_tool():
-    """Guards the wiring rather than the logic. A tool registers as a side
-    effect of its module being imported, so an entrypoint that stops calling
-    load_tools(), or a tool file that never gets discovered, still starts up
-    perfectly well and serves nothing - a failure that stays invisible until
-    a client asks for a tool. This turns it into a test failure instead.
+    """Import the entrypoint in a fresh process and list tools.
 
-    The probe runs in a fresh interpreter on purpose. Registration mutates
-    one shared `mcp` object, and this file's own `from tools.add import add`
-    already registers `add` in the pytest process - asserting in here would
-    pass whatever the entrypoint does. A clean process imports nothing but
-    the entrypoint, so what comes back is exactly what a deployed server
-    would serve."""
+    Registration mutates a shared `mcp`. This file's `from tools.add import
+    add` already registers `add` here, so the assert has to run elsewhere.
+    """
     probe = (
         "import asyncio, importlib;"
         "importlib.import_module('__ENTRYPOINT__');"
@@ -280,14 +207,8 @@ def test_entrypoint_registers_every_tool():
     assert "add" in result.stdout.split(), result.stdout
 '''
 
-# Unpinned, uv takes the newest fastmcp first and backtracks foro to a release
-# that doesn't bound mcp - foro 0.4.0, whose run() binds $MCP_PORT instead of
-# the $PORT the platform sets. 0.11 is the first release that binds $PORT, and
-# every published release since bounds mcp below 2, so this floor rules that
-# pairing out while uv still picks the newest foro. It is a fixed version
-# rather than the running CLI's own on purpose: a tag-only release bumps the
-# package version without publishing it, and a floor nobody can install fails
-# `uv lock`.
+# foro>=0.11: 0.4.0 binds $MCP_PORT, not $PORT. A floor of the running CLI
+# version fails `uv lock` when that version is not published yet.
 _PYPROJECT_TEMPLATE = '''[project]
 name = "{name}"
 version = "0.1.0"
@@ -362,17 +283,8 @@ class ScaffoldError(Exception):
 
 
 def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False) -> None:
-    """Write a from-scratch project: app.py, server.py (the entrypoint the
-    platform looks for), tools/, pyproject.toml, a locked uv.lock (`uv lock`,
-    so the golden round-trip - init's output must pass check - holds without
-    a manual step), README.md, .gitignore,
-    .env.example, and tests/.
-
-    All or nothing: `uv lock` runs last and can fail, and the leftovers used
-    to block the retry with "already exists and is not empty".
-    """
-    # Only remove what this call created - scaffold_new is callable on its
-    # own and must not take a user's directory with it.
+    """Write a from-scratch project. `uv lock` runs last; failure deletes
+    only files this call created."""
     created_root = not dir_path.exists()
     written: list[Path] = []
 
@@ -397,9 +309,6 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         )
         write(
             dir_path / "pyproject.toml",
-            # {python_version} is pyproject's own `requires-python`, not the
-            # manifest field - scaffold_new only ever writes Python projects,
-            # so the runtime's version is the right value to put there.
             _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
         )
         write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
@@ -429,7 +338,6 @@ def _remove_scaffold(dir_path: Path, written: list[Path], created_root: bool) ->
     if created_root:
         shutil.rmtree(dir_path, ignore_errors=True)
         return
-    # Take back only what was written, plus our two now-empty directories.
     for path in written:
         path.unlink(missing_ok=True)
     for name in ("tools", "tests"):

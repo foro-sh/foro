@@ -1,11 +1,5 @@
-"""Direct unit tests for `_manifest.py` that manifest-cases.json can't
-express: `manifest_path` is a `parse_and_validate` argument, not a config
-field, so its rejection cases live here rather than in the shared table
-(mirrors foro-sh/platform's manifest.test.ts, which does the same for its
-`manifest_path` describe block and the `isValidRepoPath` table). The shared
-table carries only ok/reason, so which version a range resolves *to* lives
-here too.
-"""
+"""`_manifest.py` cases the shared table cannot express: `manifest_path`
+and resolved runtime versions."""
 
 from __future__ import annotations
 
@@ -55,22 +49,16 @@ def test_is_valid_repo_path(path, expected):
 @pytest.mark.parametrize(
     ("spec", "runtime", "expected"),
     [
-        # `||` is a union of ranges. Reading it as one more clause to
-        # intersect makes `^22 || ^24` - the idiomatic way to declare both
-        # majors foro supports - resolve to nothing at all.
         ("^22 || ^24", "node", "24"),
         ("^20 || ^22", "node", "22"),
         ("22 || 24", "node", "24"),
         (">=22", "node", "24"),
         ("^22.0.0", "node", "22"),
-        # `!=` excludes; without it in the operator table the version reads as
-        # a bare `==` pin on the one version the project ruled out.
         (">=3.11,!=3.13", "python", "3.12"),
         (">=3.10,!=3.12", "python", "3.13"),
         (">=3.11,<3.13", "python", "3.12"),
         ("==3.11.*", "python", "3.11"),
         ("~=3.11", "python", "3.13"),
-        # Unreadable or absent: the default, never a guess.
         ("", "python", "3.12"),
         ("whatever a spec can say", "python", "3.12"),
     ],
@@ -123,21 +111,11 @@ def test_egress_preserves_order_and_contents(tmp_path):
 @pytest.mark.parametrize(
     ("entry", "expected"),
     [
-        # Host bits below the prefix are masked off, same as iptables would,
-        # so this is treated as 10.0.0.0/8 - not narrow enough to dodge the
-        # reserved-range check, but not reserved either.
         ("10.1.2.3/8:443", True),
-        # Deliberately allowlistable, for the future WireGuard connector into
-        # a customer VNet.
         ("10.0.0.0/8:443", True),
         ("192.168.0.0/16:443", True),
-        # Masked to 172.0.0.0/8, which is wide enough to swallow the reserved
-        # 172.16.0.0/13 - overlap, not prefix equality, is what's checked.
         ("172.0.0.0/8:443", False),
-        # Masked to 172.16.0.0/12, which overlaps 172.16.0.0/13.
         ("172.16.5.5/12:443", False),
-        # `fullmatch`, not `match` - a trailing newline must not sneak past
-        # the `$` the way it would with Python's `match`.
         ("example.com:443\n", False),
     ],
 )

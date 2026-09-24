@@ -1,9 +1,4 @@
-"""Port of foro-sh/platform's apps/api/src/services/node-project.ts.
-
-Only the detection logic - not the install/run command tables, which
-foro check has no use for; it only needs to know which manager applies and
-whether the matching lockfile is on disk.
-"""
+"""Port of foro-sh/platform's apps/api/src/services/node-project.ts."""
 
 from __future__ import annotations
 
@@ -19,7 +14,7 @@ LOCKFILES = {
 
 
 class NodeDependencyManagerError(Exception):
-    """No recognised Node project structure and no `dependency_manager` override."""
+    pass
 
 
 def detect_dependency_manager(build_dir: Path, override: str | None = None) -> str:
@@ -36,9 +31,7 @@ def detect_dependency_manager(build_dir: Path, override: str | None = None) -> s
     if has("package-lock.json"):
         return "npm"
 
-    # Bun is deliberately absent from the enum: the platform's node base image
-    # has no bun binary, and treating bun.lock as npm would install a different
-    # tree than it pins. Detected only to fail with the real reason.
+    # The platform image has no bun binary. bun.lock is not an npm lockfile.
     if has("bun.lock") or has("bun.lockb"):
         raise NodeDependencyManagerError(
             "Bun projects are not supported yet - remove bun.lock and commit an "

@@ -3,7 +3,6 @@ name = "entrypoint-missing"
 version = "0.1.0"
 requires-python = ">=3.12"
 
-# Points at a file that isn't there: the platform can't catch this until the
-# container fails to start, which is what makes it a check-only rule.
+# File does not exist. Check-only: the platform fails at container start.
 [tool.foro]
 entrypoint = "server.py"

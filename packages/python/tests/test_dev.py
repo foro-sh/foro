@@ -22,8 +22,7 @@ def test_run_dev_succeeds_against_a_real_foro_run_server():
 
 
 def test_run_dev_raises_on_stdio_only_server():
-    """The footgun this command exists to catch. It surfaces as an immediate
-    exit, not a hang - the child gets DEVNULL for stdin."""
+    """stdio transport never opens a port. stdin is DEVNULL so it exits."""
     with pytest.raises(DevError, match="foro.run"):
         run_dev(FIXTURES / "stdio-only", timeout=5)
 
@@ -38,7 +37,7 @@ def _dead_on_arrival(tmp_path, port, exit_code=3):
 
 
 def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
-    """It used to poll the full timeout regardless."""
+    """Must return as soon as the child exits, not after the full timeout."""
     started = time.monotonic()
 
     with pytest.raises(DevError, match="exited with status 3"):
@@ -48,7 +47,7 @@ def test_run_dev_gives_up_as_soon_as_the_server_dies(tmp_path):
 
 
 def test_a_dead_server_reports_its_exit_status(tmp_path):
-    """The old message never mentioned the process had exited, or with what."""
+    """The error must include the child's exit status."""
     with pytest.raises(DevError) as exc_info:
         run_dev(_dead_on_arrival(tmp_path, 8138), timeout=30)
 
@@ -57,8 +56,7 @@ def test_a_dead_server_reports_its_exit_status(tmp_path):
 
 
 def test_someone_elses_listener_is_not_mistaken_for_our_server(tmp_path):
-    """The probe cannot tell whose listener it found, so a squatter read as
-    a healthy server. Refusing the port up front is what fixes that."""
+    """Refuse if the port is already open before the child starts."""
     squatter = socket.socket()
     squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     squatter.bind(("127.0.0.1", 0))
@@ -87,8 +85,6 @@ def test_start_server_loads_dotenv(tmp_path, monkeypatch):
 
     env = captured["kwargs"]["env"]
     assert env["DEMO_SECRET"] == "from-dotenv"
-    # The manifest's real port always wins over a stray PORT in .env -
-    # that value is authoritative, not something local config should shadow.
     assert env["PORT"] == "8000"
 
 
@@ -100,17 +96,12 @@ def _captured_env(tmp_path, monkeypatch):
 
 
 def test_start_server_suppresses_the_fastmcp_banner(tmp_path, monkeypatch):
-    # foro.run() prints foro's own banner instead. Setting it here rather
-    # than in-process is what makes it stick: fastmcp reads the variable at
-    # import time, which has already happened by the time foro.run() runs.
     monkeypatch.delenv("FASTMCP_SHOW_SERVER_BANNER", raising=False)
 
     assert _captured_env(tmp_path, monkeypatch)["FASTMCP_SHOW_SERVER_BANNER"] == "false"
 
 
 def test_start_server_banner_default_yields_to_an_explicit_choice(tmp_path, monkeypatch):
-    # A default, not a policy: someone debugging fastmcp itself can ask for
-    # its banner back from the shell or from .env.
     monkeypatch.setenv("FASTMCP_SHOW_SERVER_BANNER", "true")
     assert _captured_env(tmp_path, monkeypatch)["FASTMCP_SHOW_SERVER_BANNER"] == "true"
 

@@ -1,6 +1,4 @@
-"""The device flow can't be exercised end to end until foro-sh/platform#551
-ships the server half, so these drive it against a real HTTP server serving
-scripted responses - the state machine, not a mock of it."""
+"""Device-flow state machine against a scripted HTTP server."""
 
 from __future__ import annotations
 
@@ -17,8 +15,6 @@ from foro._api import ApiError
 
 
 class _Handler(BaseHTTPRequestHandler):
-    # Each entry is (status, body); the server pops one per request so a test
-    # can script "pending, pending, slow_down, approved".
     script: list = []
     seen: list = []
 
@@ -52,7 +48,7 @@ def server():
 
 @pytest.fixture(autouse=True)
 def no_sleeping(monkeypatch):
-    """The loop's real timing would make these tests take a minute."""
+    """Replace time.sleep so the poll loop does not wait."""
     slept = []
     monkeypatch.setattr(auth.time, "sleep", slept.append)
     return slept
@@ -100,9 +96,7 @@ def test_slow_down_adopts_the_interval_the_server_sends(server, no_sleeping):
 
     auth.poll_for_token(host, _grant(interval=5))
 
-    # 12, not 5 + SLOW_DOWN_STEP: the server is enforcing its own cadence and
-    # says which one, so a local guess is not the number to poll on. One
-    # sleep, not two - the first request goes out before any waiting.
+    # Server-sent interval after slow_down, not current + SLOW_DOWN_STEP.
     assert no_sleeping == [12.0]
 
 
@@ -119,8 +113,7 @@ def test_slow_down_without_an_interval_falls_back_to_the_local_step(server, no_s
 
 
 def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
-    """The human is sent to the browser before this loop starts, so the
-    approval is often already in when it runs."""
+    """First poll happens before any sleep."""
     host, handler = server
     handler.script = [(200, {"access_token": "foro_pat_abc"})]
 
@@ -131,7 +124,7 @@ def test_an_already_approved_grant_costs_no_wait_at_all(server, no_sleeping):
 
 
 def test_a_zero_interval_from_the_server_does_not_become_a_busy_loop(server, no_sleeping):
-    """0 is not a number to poll on, in either position."""
+    """interval 0 must not busy-loop."""
     host, handler = server
     handler.script = [
         (400, {"error": "authorization_pending"}),
@@ -218,7 +211,6 @@ def test_revoke_refuses_to_guess_when_two_rows_share_a_prefix(server):
     with pytest.raises(auth.AuthError, match="more than one"):
         auth.revoke(host, token)
 
-    # Nothing was deleted - the list call is the only request made.
     assert len(handler.seen) == 1
 
 
@@ -232,7 +224,6 @@ def test_revoke_says_so_when_the_token_is_already_gone(server):
 
 def test_token_shape_is_checked_before_a_pasted_token_is_used():
     assert auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 43)
-    # A truncated paste, the wrong credential entirely, and a bare secret.
     assert not auth.TOKEN_RE.match(auth.TOKEN_PREFIX + "a" * 42)
     assert not auth.TOKEN_RE.match("ghp_" + "a" * 43)
     assert not auth.TOKEN_RE.match("a" * 43)
@@ -241,12 +232,9 @@ def test_token_shape_is_checked_before_a_pasted_token_is_used():
 def test_only_loopback_hosts_are_addressed_over_plain_http():
     from foro._api import base_url
 
-    # The two dev stacks: native on a port, and Traefik's Host() rule.
     assert base_url("localhost:3001") == "http://localhost:3001"
     assert base_url("127.0.0.1:3001") == "http://127.0.0.1:3001"
     assert base_url("foro.localhost") == "http://foro.localhost"
-    # Everything else carries a bearer token and must be TLS - including a
-    # lookalike that merely contains the string.
     assert base_url("foro.sh") == "https://foro.sh"
     assert base_url("localhost.evil.example") == "https://localhost.evil.example"
 
@@ -264,7 +252,6 @@ def test_config_round_trip_and_permissions():
 
     _config.delete("foro.sh")
     assert _config.load("foro.sh") is None
-    # Logging out of the last host leaves nothing behind, not an empty `{}`.
     assert not _config.config_path().exists()
 
 
@@ -313,8 +300,7 @@ def test_saving_never_leaves_the_file_group_or_world_readable():
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
 def test_saving_narrows_a_file_that_was_already_too_open():
-    """The case the test above cannot see: os.open's mode applies only on
-    create, so an existing 0644 hosts.yml kept it and took the token."""
+    """os.open mode applies only on create; fchmod must narrow an existing file."""
     path = _config.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{}\n")
@@ -326,10 +312,6 @@ def test_saving_narrows_a_file_that_was_already_too_open():
     assert not _config.has_insecure_permissions()
 
 
-# --- malformed responses --------------------------------------------------
-#
-# A 2xx is not a promise about the body. Indexing one that isn't the expected
-# shape raised KeyError/TypeError out of the auth module as a traceback.
 
 
 def test_a_non_object_device_code_response_is_reported_not_indexed(server):
@@ -399,8 +381,7 @@ def test_revoke_reports_a_token_list_that_is_not_a_list(server):
 
 
 def test_revoke_refuses_a_token_without_the_foro_prefix():
-    """The slice assumed the prefix was there; another shape yields the
-    wrong eight characters and matches nothing, or somebody else's row."""
+    """A token without the prefix must not be sliced and matched."""
     with pytest.raises(auth.AuthError, match="does not look like a foro token"):
         auth.revoke("foro.sh", "ghp_something_else_entirely")
 

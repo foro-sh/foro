@@ -1,9 +1,4 @@
-"""Port of foro-sh/platform's apps/api/src/services/python-project.ts.
-
-Only the detection logic - not the install/run command tables, which
-foro check has no use for; it only needs to know which manager applies and
-whether the matching lockfile is on disk.
-"""
+"""Port of foro-sh/platform's apps/api/src/services/python-project.ts."""
 
 from __future__ import annotations
 
@@ -20,7 +15,7 @@ LOCKFILES = {
 
 
 class DependencyManagerError(Exception):
-    """No recognised Python project structure and no `dependency_manager` override."""
+    pass
 
 
 def detect_dependency_manager(build_dir: Path, override: str | None = None) -> str:
@@ -43,13 +38,10 @@ def detect_dependency_manager(build_dir: Path, override: str | None = None) -> s
     if has("requirements.txt"):
         return "uv-pip"
 
-    # `runtime` is not inferred from what's on disk, so a Node repo whose
-    # manifest omits it lands here, on the default runtime, and the honest
-    # message about missing Python markers reads as nonsense. Name the real fix.
     if has("package.json"):
         raise DependencyManagerError(
             "No recognised Python project, but this looks like a Node project - "
-            "add `runtime: node` to foro.yaml"
+            "set `runtime` to `node` in package.json's `foro` key"
         )
 
     raise DependencyManagerError(

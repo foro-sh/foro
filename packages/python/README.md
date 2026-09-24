@@ -187,13 +187,12 @@ guess wrong quietly:
 The archive is what git would track — `.gitignore` is honoured, and `.git/`,
 `.venv/`, `__pycache__/`, `node_modules/`, `dist/` and `.env*` are always
 excluded, so a first deploy can't ship a secret or a 400 MB virtualenv.
-`foro.yaml` must be at the root of the directory you deploy, which is where
-`foro init` puts it.
+`pyproject.toml` or `package.json` must be at the root of the directory you
+deploy, which is where `foro init` puts it.
 
-The link lives in `.foro/project.json` (gitignored), **not** in `foro.yaml` —
-the manifest is the shared, committed build contract, while the slug is
-platform-generated and workspace-scoped, so baking it into a committed file
-would make a fork deploy into someone else's project.
+The link lives in `.foro/project.json` (gitignored), not in the project
+config. The slug is platform-generated and workspace-scoped, so a committed
+slug would make a fork deploy into someone else's project.
 
 ```console
 $ foro logs -f                   # tail the running server

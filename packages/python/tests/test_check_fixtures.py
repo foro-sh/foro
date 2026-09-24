@@ -1,14 +1,4 @@
-"""Filesystem-dependent check-only rules, exercised against whole miniature
-repos under tests/fixtures/<name>/ - the cases manifest-cases.json can't
-express because they turn on files on disk, not just config-file content.
-
-Not every fixture from foro-sh/foro#5's original table is here: build-path-subdir,
-with-secrets, stdio-one-line, and bridge-stdio don't add coverage of check()
-that minimal-fastmcp doesn't already provide (check never executes the
-entrypoint), and bridge-stdio's premise depends on foro.bridge() (#8, not
-built yet). stdio-only is dynamic-only (needs `foro dev`, #7) - check can't
-catch it statically. Left as follow-up, not invented here.
-"""
+"""Filesystem-dependent `foro check` rules against tests/fixtures/."""
 
 from __future__ import annotations
 
@@ -27,11 +17,6 @@ def test_minimal_fastmcp_passes_clean():
 
 
 def test_missing_lockfile_warns_but_passes():
-    # Corrected from foro-sh/foro#1's original fixture table, which expected
-    # this to be a hard "missing_lockfile" rejection: python-project.ts
-    # actually falls back to an unlocked `uv sync` when uv.lock is absent, so
-    # the platform accepts this - check must agree, or it lies about a repo
-    # that would in fact deploy.
     result = run_check(FIXTURES / "missing-lockfile")
 
     assert result.ok
@@ -68,8 +53,6 @@ def test_node_project_passes():
 
 
 def test_node_project_without_an_entry_file_fails():
-    # A package.json with no `main`, no `bin` and no index.js beside it: the
-    # runtime is unambiguous, the file to start is not.
     result = run_check(FIXTURES / "node-no-entry")
 
     assert not result.ok
@@ -77,10 +60,6 @@ def test_node_project_without_an_entry_file_fails():
 
 
 def test_node_project_under_a_python_build_path_is_told_which_field_to_set(tmp_path):
-    # `build_path` can point the build somewhere the config file isn't, so a
-    # Python project can still send the detector into a Node directory.
-    # Listing the Python markers it lacks would be honest and useless; naming
-    # the field is the actual fix.
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "my-server"\n\n[tool.foro]\n'
         'entrypoint = "dist/index.js"\nbuild_path = "app"\n'
@@ -105,10 +84,6 @@ def test_wrong_fastmcp_import_warns_but_passes():
 
 
 def test_wrong_fastmcp_import_detected_outside_entrypoint(tmp_path):
-    # The recommended structure (foro init's own scaffold) puts FastMCP
-    # construction in app.py, imported by the entrypoint - the wrong-import
-    # scan has to look beyond just the entrypoint file or this regresses
-    # silently for exactly the layout foro init itself now produces.
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "split-server"\n')
     (tmp_path / "app.py").write_text(
         'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("x")\n'
@@ -138,8 +113,7 @@ def test_the_wrong_import_is_still_found_in_the_users_own_code(tmp_path):
 
 
 def test_vendored_and_hidden_directories_are_not_scanned(tmp_path):
-    """Only .venv/__pycache__/.git were skipped, so .tox, node_modules and
-    site-packages all false-positived."""
+    """Do not scan .tox, node_modules, site-packages, or tests/."""
     _project(tmp_path)
     for buried in (
         ".tox/py312/lib/python3.12/site-packages/mcp/server/x.py",
