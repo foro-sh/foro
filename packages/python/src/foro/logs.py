@@ -18,19 +18,18 @@ def stream_runtime(host: str, token: str, slug: str):
 
 def read_runtime(host: str, token: str, slug: str) -> list[dict]:
     payload = _api.request("GET", f"/api/projects/{slug}/logs", host=host, token=token)
-    return payload.get("lines", [])
+    return payload.get("lines", []) if isinstance(payload, dict) else []
 
 
 def read_deployment(host: str, token: str, slug: str, deployment_id: str, kind: str) -> list[dict]:
-    """`kind` is 'deploy' (the orchestration narrative) or 'build' (raw docker
-    output) - the platform persists them as separate objects."""
+    """`kind` is 'deploy' or 'build'. The platform stores them as separate objects."""
     payload = _api.request(
         "GET",
         f"/api/projects/{slug}/deployments/{deployment_id}/{kind}",
         host=host,
         token=token,
     )
-    return payload.get("lines", [])
+    return payload.get("lines", []) if isinstance(payload, dict) else []
 
 
 def latest_deployment_id(host: str, token: str, slug: str) -> str | None:
