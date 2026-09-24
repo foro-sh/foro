@@ -1,10 +1,4 @@
-"""`foro verify` - the handshake against a deployed URL.
-
-The end-to-end case (a real server, a real session, real tool names) is
-covered by test_init_dev_roundtrip, which now goes through the same
-_mcp.handshake this command uses. What's left to pin here is the URL a user
-actually types, and that a dead endpoint fails loudly rather than looking fine.
-"""
+"""URL normalisation and handshake errors for `foro verify`."""
 
 from __future__ import annotations
 
@@ -24,21 +18,13 @@ runner = CliRunner()
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        # What `foro deploy` prints, which is what a user has in hand.
         ("https://swift-harbor-a3f2.foro.sh", "https://swift-harbor-a3f2.foro.sh/mcp"),
         ("https://swift-harbor-a3f2.foro.sh/", "https://swift-harbor-a3f2.foro.sh/mcp"),
-        # Already pointed at the endpoint - don't double it up.
         ("https://swift-harbor-a3f2.foro.sh/mcp", "https://swift-harbor-a3f2.foro.sh/mcp"),
         ("https://swift-harbor-a3f2.foro.sh/mcp/", "https://swift-harbor-a3f2.foro.sh/mcp"),
-        # A bare host is https, not a relative path.
         ("swift-harbor-a3f2.foro.sh", "https://swift-harbor-a3f2.foro.sh/mcp"),
-        # A dev stack is explicit about being plaintext.
         ("http://127.0.0.1:8000", "http://127.0.0.1:8000/mcp"),
         ("  https://x.foro.sh  ", "https://x.foro.sh/mcp"),
-        # A path the user typed is the one they mean. Appending to anything
-        # that merely didn't end in `/mcp` rewrote it: `/mcpserver` became
-        # `/mcpserver/mcp`, and a server behind a path prefix could not be
-        # verified at all.
         ("https://x.foro.sh/mcpserver", "https://x.foro.sh/mcpserver"),
         ("https://x.foro.sh/team/a/mcp", "https://x.foro.sh/team/a/mcp"),
         ("https://x.foro.sh/prefix/", "https://x.foro.sh/prefix"),
@@ -53,15 +39,12 @@ def test_local_url_matches_what_dev_serves():
 
 
 def test_nothing_listening_fails_with_the_url_in_the_message():
-    # Port 1 is never a server; the point is a clean HandshakeError rather
-    # than an ExceptionGroup from the transport reaching the user.
     with pytest.raises(HandshakeError, match="is not serving MCP"):
         handshake("http://127.0.0.1:1/mcp", timeout=5)
 
 
 class _NotMcpHandler(BaseHTTPRequestHandler):
-    """Answers HTTP but speaks no MCP - the shape a misconfigured route or a
-    proxy error page has, and the case a plain curl would call 'up'."""
+    """HTTP 200 that is not MCP."""
 
     def do_POST(self):
         body = json.dumps({"hello": "not mcp"}).encode()

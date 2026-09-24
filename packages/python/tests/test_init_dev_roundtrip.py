@@ -1,7 +1,4 @@
-"""The golden round-trip from foro-sh/foro#1's original test plan: init's
-output must pass check, and must actually serve when run through dev. The
-scaffolder can't emit something the rest of the toolchain would reject.
-"""
+"""`foro init` output must pass `foro check` and serve under `foro dev`."""
 
 from __future__ import annotations
 

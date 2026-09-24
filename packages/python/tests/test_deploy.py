@@ -1,6 +1,4 @@
-"""The parts of `foro deploy` that are wrong quietly: what goes into the zip,
-how the SSE stream ends, which source a directory deploys as, and whether an
-API refusal reads as a sentence."""
+"""Tests for `foro deploy`: archive contents, SSE, source inference, errors."""
 
 from __future__ import annotations
 
@@ -30,9 +28,6 @@ def _project(tmp_path, *, git=False):
 
 def _names(archive: _archive.Archive) -> set[str]:
     return set(zipfile.ZipFile(BytesIO(archive.content)).namelist())
-
-
-# --- the zip contract -------------------------------------------------------
 
 
 def test_manifest_lands_at_the_archive_root(tmp_path):
@@ -90,14 +85,12 @@ def test_outside_a_git_repo_the_walk_still_excludes_junk(tmp_path):
 def test_an_oversized_archive_fails_locally_rather_than_as_a_413(tmp_path, monkeypatch):
     _project(tmp_path)
     monkeypatch.setattr(_archive, "MAX_UPLOAD_BYTES", 128)
-    # Incompressible, so the zip really does exceed the cap.
     (tmp_path / "blob.bin").write_bytes(bytes(range(256)) * 64)
 
     with pytest.raises(_archive.ArchiveError, match="upload limit"):
         _archive.build(tmp_path)
 
 
-# --- the SSE stream ---------------------------------------------------------
 
 
 class _SseHandler(BaseHTTPRequestHandler):
@@ -138,9 +131,7 @@ def test_the_done_sentinel_ends_the_stream_and_is_not_yielded(sse_server):
 
 
 def test_a_stream_cut_short_just_ends(sse_server):
-    # A mid-stream disconnect has no sentinel; the iterator must end rather
-    # than hang or raise, so the caller falls through to reading the
-    # deployment's final status.
+    # Mid-stream disconnect has no `done` sentinel; the iterator must end.
     host, handler = sse_server
     handler.body = b'data: {"line": "cloning"}\n\n'
 
@@ -156,11 +147,10 @@ def test_a_refused_stream_raises_rather_than_yielding_nothing(sse_server):
         list(_api.stream_sse("/s", host=host, token="t"))
 
 
-# --- source inference -------------------------------------------------------
 
 
 class _ApiRecorder:
-    """Stands in for the platform: records calls, replies from a script."""
+    """Records API calls and replies from a script."""
 
     def __init__(self, project):
         self.project = project
@@ -252,9 +242,7 @@ def test_a_link_for_another_host_is_not_reused(tmp_path):
     ids=["empty", "malformed", "not-an-object", "missing-slug"],
 )
 def test_an_unreadable_link_reads_as_unlinked_rather_than_crashing(tmp_path, content):
-    # .foro/project.json is generated, not authored, so a damaged one should
-    # send deploy down its create-and-link path - not abort the command with a
-    # traceback about JSON the user never wrote.
+    # Damaged .foro/project.json must not abort deploy.
     _project_link.link_path(tmp_path).parent.mkdir(parents=True)
     _project_link.link_path(tmp_path).write_text(content)
 
@@ -262,9 +250,7 @@ def test_an_unreadable_link_reads_as_unlinked_rather_than_crashing(tmp_path, con
 
 
 def test_a_pre_1980_timestamp_does_not_fail_the_deploy(tmp_path):
-    # The zip format can't represent dates before 1980 and zipfile raises on
-    # one by default. Vendored fixtures and restored backups carry them, and
-    # failing an entire deploy over an mtime nobody reads is the wrong trade.
+    # zipfile raises on mtimes before 1980 unless strict_timestamps=False.
     _project(tmp_path)
     ancient = tmp_path / "vendored.txt"
     ancient.write_text("from a tarball with a 1970 mtime\n")
@@ -283,7 +269,6 @@ def test_uncommitted_and_unpushed_work_is_called_out(tmp_path):
 
     assert "uncommitted changes" in warning
     assert "will not be included" in warning
-    # No remote in a fresh `git init`, which is its own problem worth naming.
     assert "no upstream" in warning
 
 
@@ -291,9 +276,6 @@ def test_no_warning_outside_a_git_repo(tmp_path):
     _project(tmp_path)
 
     assert deploy.local_changes_warning(tmp_path) is None
-
-
-# --- error mapping ----------------------------------------------------------
 
 
 @pytest.mark.parametrize(

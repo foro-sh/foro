@@ -1,17 +1,10 @@
-"""Direct unit tests for `_node_project.detect_dependency_manager`, ported
-from foro-sh/platform's apps/api/src/services/node-project.ts. Otherwise the
-module is only exercised indirectly through `run_check()`, and only ever hits
-the pnpm branch, since `tests/fixtures/node-minimal/` ships a pnpm-lock.yaml.
-"""
+"""Unit tests for `_node_project.detect_dependency_manager`."""
 
 from __future__ import annotations
 
 import pytest
 
 from foro._node_project import NodeDependencyManagerError, detect_dependency_manager
-
-
-# --- lockfile detection ---------------------------------------------------
 
 
 def test_detects_npm_from_package_lock(tmp_path):
@@ -43,9 +36,6 @@ def test_raises_when_nothing_recognisable_present(tmp_path):
         detect_dependency_manager(tmp_path)
 
 
-# --- bun rejection ---------------------------------------------------------
-
-
 def test_rejects_bun_lock(tmp_path):
     (tmp_path / "bun.lock").write_text("")
 
@@ -65,9 +55,6 @@ def test_real_lockfile_wins_over_bun_lock(tmp_path):
     (tmp_path / "package-lock.json").write_text("{}")
 
     assert detect_dependency_manager(tmp_path) == "npm"
-
-
-# --- override ---------------------------------------------------------------
 
 
 def test_override_wins_over_disk_contents(tmp_path):

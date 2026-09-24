@@ -29,8 +29,6 @@ def test_check_passes_valid_project(tmp_path):
 
 
 def test_check_fails_invalid_project(tmp_path):
-    # A Python project whose entry file is none of the names foro looks for
-    # and which never says where it is.
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
 
     result = runner.invoke(app, ["check", str(tmp_path)])
@@ -40,11 +38,7 @@ def test_check_fails_invalid_project(tmp_path):
 
 
 def test_dev_once_stops_the_server_instead_of_waiting(monkeypatch):
-    """`--once` is what makes `dev` runnable by an agent at all: the default
-    form blocks on `process.wait()` until Ctrl+C, which an agent can only
-    escape by timing out. The fake refuses an unbounded `wait()`, so this
-    fails if `--once` ever falls through to the blocking path - a plain
-    exit-code assertion wouldn't, since a fake process returns instantly."""
+    """`--once` must call `wait(timeout=...)`, not block on `wait()`."""
 
     class FakeProcess:
         terminated = False
@@ -71,8 +65,7 @@ def test_dev_once_stops_the_server_instead_of_waiting(monkeypatch):
 
 
 def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
-    """No stdin is supplied, so a surviving prompt aborts the run - which is
-    exactly what `--yes` exists to prevent when CI or an agent drives init."""
+    """`--yes` must not prompt; no stdin is supplied."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "server.py").write_text("# mcp server\n")
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
@@ -80,8 +73,6 @@ def test_init_yes_answers_every_prompt_with_its_default(tmp_path, monkeypatch):
     result = runner.invoke(app, ["init", "--yes"])
 
     assert result.exit_code == 0, result.stdout
-    # Every default answer is one the platform infers, so there is nothing to
-    # write down - that is the point of the defaults, not a failure to act.
     assert "nothing to configure" in result.stdout
     assert "[tool.foro]" not in (tmp_path / "pyproject.toml").read_text()
 
@@ -91,8 +82,7 @@ TOKEN = "foro_pat_" + "b" * 43
 
 @pytest.fixture
 def logged_in(monkeypatch, tmp_path):
-    """A machine that already has a stored login for the host under test -
-    i.e. every CI run after the first one."""
+    """Stored login for 127.0.0.1:1."""
     monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
     monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -101,9 +91,6 @@ def logged_in(monkeypatch, tmp_path):
     path = _config.config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump({"127.0.0.1:1": {"token": "foro_pat_" + "a" * 43, "user": "me"}}))
-    # write_text takes the default umask, which is usually group/world
-    # readable - narrow it so tests start from the secure baseline the real
-    # `save()` produces, and opt into the insecure case explicitly.
     if os.name != "nt":
         path.chmod(0o600)
     return path
@@ -111,7 +98,7 @@ def logged_in(monkeypatch, tmp_path):
 
 @pytest.fixture
 def logged_out(monkeypatch, tmp_path):
-    """A machine that has never logged in to the host under test."""
+    """No stored login."""
     monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
     monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -119,10 +106,7 @@ def logged_out(monkeypatch, tmp_path):
 
 
 def test_with_token_does_not_lose_the_token_to_the_re_login_prompt(logged_in):
-    """stdin is the token, and the re-login confirm used to eat it as its
-    answer. The host is unreachable on purpose - reaching a rejected network
-    call proves the token was read rather than swallowed.
-    """
+    """`--with-token` must not treat stdin as a confirm answer."""
     result = runner.invoke(app, ["auth", "login", "--with-token"], input=TOKEN + "\n")
 
     assert result.exit_code == 1
@@ -139,8 +123,7 @@ def test_with_token_still_rejects_a_token_of_the_wrong_shape(logged_in):
 
 
 def test_the_device_flow_does_not_die_on_a_closed_stdin(monkeypatch, tmp_path):
-    """`input()` ran unconditionally and its EOFError escaped every handler -
-    what `foro auth login` under nohup or in a container looked like."""
+    """Closed stdin must not raise EOFError out of `foro auth login`."""
     monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
     monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
@@ -165,20 +148,17 @@ def test_the_device_flow_does_not_die_on_a_closed_stdin(monkeypatch, tmp_path):
 
     monkeypatch.setattr(cli_module, "poll_for_token", denied)
 
-    # CliRunner hands the command a non-tty stdin, which is the case at issue.
     result = runner.invoke(app, ["auth", "login"], input="")
 
     assert not isinstance(result.exception, EOFError)
     assert result.exit_code == 1
-    # It got all the way to polling, and said where to authorize on the way.
     assert grant.verification_uri_complete in result.output
     assert "denied" in result.output
-    # No terminal means no browser worth opening - the URL is on screen.
     assert opened == []
 
 
 def test_the_device_flow_still_asks_before_replacing_a_login(logged_in):
-    """Skipping the confirm is scoped to --with-token, not login at large."""
+    """Interactive login still confirms before replacing a stored token."""
     result = runner.invoke(app, ["auth", "login"], input="n\n")
 
     assert result.exit_code == 1
@@ -187,9 +167,7 @@ def test_the_device_flow_still_asks_before_replacing_a_login(logged_in):
 
 @pytest.mark.parametrize("command", [["auth", "status"], ["auth", "logout"], ["auth", "token"]])
 def test_auth_commands_require_a_login(logged_out, command):
-    """status/logout/token all gate on the same _require_credentials() check,
-    so a missing login must stop every one of them before they touch the
-    network or the filesystem."""
+    """status, logout, and token require a stored login."""
     result = runner.invoke(app, command)
 
     assert result.exit_code == 1
@@ -213,8 +191,7 @@ def test_auth_status_warns_when_config_file_is_insecure(logged_in, monkeypatch):
 
 
 def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeypatch):
-    """The negative half of the warning test above - without it, a warning
-    that always fires would still pass."""
+    """No warning when the config file is 0600."""
     import foro.cli as cli_module
     from foro.auth import Identity
 
@@ -227,9 +204,7 @@ def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeyp
 
 
 def test_auth_logout_deletes_the_local_token_when_revoke_fails(logged_in):
-    """The token must not be stranded on disk just because the host it came
-    from is unreachable or already knows the token is dead - offline or
-    already-revoked, the local file still has to go."""
+    """Logout deletes the local file even when server-side revoke fails."""
     result = runner.invoke(app, ["auth", "logout"], input="y\n")
 
     assert result.exit_code == 0
@@ -247,9 +222,7 @@ def test_auth_logout_leaves_the_token_alone_when_declined(logged_in):
 
 
 def test_auth_token_prints_exactly_the_stored_token(logged_in):
-    """Nothing else may reach stdout - this is meant to be safe to embed as
-    `$(foro auth token)` in a curl command, so a leaked warning line would
-    corrupt the header value."""
+    """stdout is exactly the token, so `$(foro auth token)` is safe."""
     result = runner.invoke(app, ["auth", "token"])
 
     assert result.exit_code == 0

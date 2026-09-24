@@ -1,10 +1,4 @@
-"""What happens when `uv` or `git` isn't installed - `foro` is documented as
-`pip install`-able, which brings neither.
-
-Each site answers it differently, and the difference is the point: `dev`
-cannot run without uv, `check` can validate everything but the lockfile, and
-a scaffolded project is fine without being a git repo.
-"""
+"""Missing `uv` / `git` on PATH."""
 
 from __future__ import annotations
 
@@ -25,7 +19,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def without(monkeypatch):
-    """Hide named binaries only - emptying PATH takes too much with it."""
+    """Raise FileNotFoundError for named binaries only."""
 
     def hide(*tools: str) -> None:
         real_run, real_popen = subprocess.run, subprocess.Popen
@@ -56,8 +50,6 @@ def test_check_still_passes_without_uv_but_says_the_lockfile_went_unchecked(tmp_
 
     result = run_check(_project(tmp_path))
 
-    # Everything check does that doesn't need uv still ran, so the verdict
-    # stands - but it must not read as "uv.lock is fine".
     assert result.ok
     assert any("not installed" in w and "uv.lock was not checked" in w for w in result.warnings)
 
@@ -90,8 +82,7 @@ def test_run_dev_raises_a_typed_error_rather_than_oserror(tmp_path, without):
 
 
 def test_scaffold_without_uv_leaves_nothing_behind(tmp_path, without):
-    """The retry matters more than the message: `foro init <name>` refuses a
-    non-empty target, so the leftovers blocked the next command."""
+    """A failed scaffold must leave no leftover directory."""
     without("uv")
     target = tmp_path / "scaffolded"
 
@@ -133,7 +124,7 @@ def test_git_init_failure_is_its_own_error(tmp_path, without):
 
 
 def test_a_missing_git_warns_but_keeps_the_scaffolded_project(tmp_path, without):
-    """git is not what makes the project work."""
+    """Missing git is a warning; the project files stay."""
     without("git")
     target = tmp_path / "scaffolded"
 

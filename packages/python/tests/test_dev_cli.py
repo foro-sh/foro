@@ -1,6 +1,4 @@
-"""CLI-level coverage for `foro dev` - what the terminal actually shows for
-each error type `dev()` catches (cli.py:295-320), and the Ctrl+C teardown
-path that exists only at this layer, never in `dev.py`'s `run_dev()`."""
+"""CLI output and Ctrl+C teardown for `foro dev`."""
 
 from __future__ import annotations
 
@@ -37,9 +35,7 @@ def test_dev_reports_an_unhealthy_server_without_a_traceback(tmp_path, monkeypat
 
 
 class _FakeProcess:
-    """A process whose `wait()` acts like Ctrl+C landed mid-run: the no-arg
-    call (blocking on the running server) raises KeyboardInterrupt, while the
-    timed call (the teardown that follows) behaves however the test needs."""
+    """`wait()` with no timeout raises KeyboardInterrupt."""
 
     def __init__(self, kill_needed: bool = False) -> None:
         self.terminated = False
@@ -74,9 +70,7 @@ def test_ctrl_c_terminates_the_server(tmp_path, monkeypatch):
 
 
 def test_ctrl_c_kills_a_server_that_ignores_terminate(tmp_path, monkeypatch):
-    """The leak this path exists to prevent: without the kill() fallback, a
-    child that ignores terminate() survives Ctrl+C and holds its port, which
-    trips dev.py's own "port already in use" guard on the next `foro dev`."""
+    """If terminate() times out, kill() must run."""
     fake = _FakeProcess(kill_needed=True)
     monkeypatch.setattr(
         cli_module, "run_dev", lambda path: (fake, DevResult(port=8000, tool_names=["add"]))
