@@ -4,7 +4,6 @@ import json
 import os
 import re
 import socket
-import subprocess
 import sys
 import threading
 import webbrowser
@@ -47,7 +46,7 @@ from foro.deploy import deploy as deploy_project
 from foro.logs import latest_deployment_id, read_deployment, read_runtime, stream_runtime
 from foro.projects import ProjectError, get_project, list_deployments, list_projects
 from foro.projects import link as link_project
-from foro.dev import DevError, run_dev
+from foro.dev import DevError, run_dev, stop
 from foro._proc import MissingToolError
 from foro.init import (
     GitInitError,
@@ -303,6 +302,12 @@ def _init_existing(dir_path: Path) -> None:
 @app.command()
 def dev(
     path: Path = typer.Argument(Path("."), help="Repo directory to run (default: current directory)."),
+    once: bool = typer.Option(
+        False,
+        "--once",
+        help="Verify and exit instead of leaving the server running - the form "
+        "to use when a script or a coding agent drives it.",
+    ),
 ) -> None:
     """Run the server locally the way foro.sh will."""
     try:
@@ -316,16 +321,19 @@ def dev(
 
     typer.secho(f"✓ would pass foro.sh's health check (port {result.port})", fg=typer.colors.GREEN)
     typer.echo("Tools: " + (", ".join(result.tool_names) if result.tool_names else "(none)"))
-    typer.echo("Press Ctrl+C to stop.")
 
+    # run_dev has already proven everything `foro dev` reports - the port
+    # opened and a real MCP handshake listed those tools - so under --once
+    # there is nothing left to wait for.
+    if once:
+        stop(process)
+        return
+
+    typer.echo("Press Ctrl+C to stop.")
     try:
         process.wait()
     except KeyboardInterrupt:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
+        stop(process)
 
 
 @app.command()

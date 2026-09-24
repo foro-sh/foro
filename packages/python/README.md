@@ -41,7 +41,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | --- | --- |
 | `foro init [name]` | Scaffold a new project, or record an existing one's foro settings in its `pyproject.toml` (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
-| `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check |
+| `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check. `--once` verifies and exits instead of staying up, for CI and coding agents |
 | `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
 | `foro auth <login\|status\|logout\|token>` | Sign in to foro.sh, so the CLI can act on your behalf |
 | `foro deploy [path]` | Deploy this directory and stream the build until it's live |
