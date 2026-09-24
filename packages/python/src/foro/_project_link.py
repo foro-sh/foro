@@ -1,12 +1,5 @@
-"""Which foro.sh project the current directory deploys to.
-
-Deliberately *not* in `foro.yaml`: the manifest is the committed, shared build
-contract and its `name` is display-only, while the slug is platform-generated,
-immutable, and workspace-scoped. Baking a slug into a committed file makes a
-fork deploy into someone else's project. So the link lives in `.foro/`, which
-is gitignored, alongside the host it belongs to - a project deployed against a
-dev stack and one on foro.sh are different projects.
-"""
+"""Directory-to-project link. Stored in `.foro/` so a committed slug cannot
+point a fork at someone else's project."""
 
 from __future__ import annotations
 
@@ -31,15 +24,6 @@ def link_path(repo_dir: Path) -> Path:
 
 
 def load(repo_dir: Path, host: str) -> ProjectLink | None:
-    """None when this directory isn't linked, or is linked to another host -
-    the same tree can legitimately be deployed to a dev stack and to foro.sh.
-
-    A file that exists but can't be read as a link counts as unlinked. It's a
-    generated cache, not something anyone typed, so a truncated or hand-edited
-    one should send `foro deploy` down its create-a-project path with a
-    re-link at the end - not abort the command with a JSONDecodeError
-    traceback the user can do nothing with.
-    """
     path = link_path(repo_dir)
     if not path.exists():
         return None

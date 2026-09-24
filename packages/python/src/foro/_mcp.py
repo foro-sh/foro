@@ -1,12 +1,4 @@
-"""One MCP handshake, used against both a local `foro dev` server and a
-deployed URL.
-
-`foro dev` established the standard: don't report a server as working because
-it printed a banner - open a session and list its tools. `foro verify` applies
-the same standard to a deployed server, where a green deploy only means the
-container passed a TCP probe. Same code, different target, so the two can't
-drift into disagreeing about what "working" means.
-"""
+"""MCP initialize + list_tools, used by `foro dev` and `foro verify`."""
 
 from __future__ import annotations
 
@@ -14,20 +6,15 @@ import sys
 import urllib.parse
 
 if sys.version_info < (3, 11):
-    # `BaseExceptionGroup` is a builtin only from 3.11. Below that the group
-    # anyio's task group raises is the `exceptiongroup` backport's, and the
-    # bare builtin name in _root_cause is a NameError - which turned every
-    # failed handshake on 3.10 into a traceback instead of a HandshakeError,
-    # on a floor pyproject.toml declares as supported.
+    # BaseExceptionGroup is builtin from 3.11. anyio's task group raises the
+    # exceptiongroup backport below that; the bare name is a NameError on 3.10.
     from exceptiongroup import BaseExceptionGroup
 
-# A deployed server is a network round trip away and may be cold-starting;
-# generous enough for that, short enough that a hung endpoint still fails.
 DEFAULT_TIMEOUT = 30.0
 
 
 class HandshakeError(Exception):
-    """The endpoint didn't complete an MCP handshake, with the reason why."""
+    pass
 
 
 async def _handshake(url: str, timeout: float) -> list[str]:
@@ -45,11 +32,6 @@ async def _handshake(url: str, timeout: float) -> list[str]:
 
 
 def handshake(url: str, timeout: float = DEFAULT_TIMEOUT) -> list[str]:
-    """Initialize an MCP session against `url` and return its tool names.
-
-    Raises HandshakeError with a message worth showing rather than letting an
-    ExceptionGroup from the transport reach the user.
-    """
     import anyio
 
     try:
@@ -57,8 +39,6 @@ def handshake(url: str, timeout: float = DEFAULT_TIMEOUT) -> list[str]:
     except TimeoutError:
         raise HandshakeError(f"{url} did not answer within {timeout:.0f}s") from None
     except Exception as err:
-        # The streamable-HTTP client raises through a task group, so the
-        # useful cause is usually nested one or more levels down.
         raise HandshakeError(f"{url} is not serving MCP: {_root_cause(err)}") from None
 
 
@@ -73,12 +53,6 @@ def local_url(port: int) -> str:
 
 
 def normalize_url(raw: str) -> str:
-    """Accept what a user actually has in hand - the URL `foro deploy` printed
-    (`https://<slug>.foro.sh`) - and point it at the MCP path.
-
-    Only a URL with no path of its own gets `/mcp` appended - a path that is
-    already there is the one the user means.
-    """
     url = raw.strip().rstrip("/")
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
