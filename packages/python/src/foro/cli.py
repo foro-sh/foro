@@ -618,6 +618,10 @@ def deploy(
 def _offer_gitignore(repo_dir: Path) -> None:
     if _project_link.is_gitignored(repo_dir):
         return
+    # A prompt here would abort a scripted or agent-run deploy mid-stream.
+    if not sys.stdin.isatty():
+        typer.echo(f"  add {_project_link.GITIGNORE_ENTRY} to .gitignore - the link is per-clone")
+        return
     if typer.confirm(f"Add {_project_link.GITIGNORE_ENTRY} to .gitignore?", default=True):
         _project_link.add_to_gitignore(repo_dir)
 
@@ -651,7 +655,7 @@ def _stream_deploy(host: str, token: str, started) -> None:
     except KeyboardInterrupt:
         typer.echo("")
         typer.secho(
-            f"detached - the deploy is still running. `foro logs --deploy {started.deployment_id[:8]}` to follow it.",
+            f"detached - the deploy is still running. `foro logs --deploy --deployment {started.deployment_id}` to read it.",
             fg=typer.colors.YELLOW,
         )
         raise typer.Exit(code=0) from None

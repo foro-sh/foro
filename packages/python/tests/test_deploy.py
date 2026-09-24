@@ -314,3 +314,12 @@ def test_api_refusals_read_as_sentences(status, payload, expected):
     err = ApiError(status, payload, json.dumps(payload))
 
     assert expected in _api.explain(err, action="deploy")
+
+
+def test_gitignore_offer_does_not_prompt_without_a_tty(tmp_path, capsys):
+    from foro import cli
+
+    cli._offer_gitignore(tmp_path)  # pytest's stdin is not a TTY; a prompt would raise Abort
+
+    assert not (tmp_path / ".gitignore").exists()
+    assert ".foro" in capsys.readouterr().out
