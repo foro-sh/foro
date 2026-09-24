@@ -56,6 +56,9 @@ tooling it never runs.
 | `foro dev [path]` | Run the server the way a container will, and report whether it passes |
 | `foro verify <url>` | Open a session against a deployed URL and list its tools |
 | `foro auth` | `login`, `status`, `logout`, `token` for [foro.sh](https://foro.sh) |
+| `foro deploy [path]` | Ship the directory to foro.sh and stream the build |
+| `foro logs [path]` | Read runtime, build or deploy logs (`-f` to follow) |
+| `foro projects` | List your foro.sh projects |
 
 `init`, `check` and `dev` are local and need no account.
 
@@ -78,8 +81,9 @@ There's a [Codex counterpart](plugins/codex) with the same skills.
 ## Deploying
 
 `foro dev` passing means the server satisfies the contract that
-[foro.sh](https://foro.sh) builds against: push the repo, pick it in the
-dashboard, add secrets, deploy. Nothing here is locked to that platform —
+[foro.sh](https://foro.sh) builds against. `foro auth login && foro deploy`
+uploads the working tree and streams the build to a live URL; a project linked
+to a GitHub repo builds from its branch instead. Nothing here is locked to that platform —
 `foro.run()` is a normal streamable-HTTP server on `$PORT`.
 
 ## Packages
