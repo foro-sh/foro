@@ -1,7 +1,7 @@
 {
   "name": "foro",
   "version": "0.1.0",
-  "description": "Take a repo from empty folder to a deployed MCP server on foro.sh — bundles the foro.sh docs MCP plus skills for the init -> foro.yaml -> push -> deploy path.",
+  "description": "Take a repo from empty folder to a deployed MCP server on foro.sh — bundles the foro.sh docs MCP plus skills for the init -> check -> push -> deploy path, with project config read from pyproject.toml or package.json.",
   "author": {
     "name": "foro.sh",
     "url": "https://foro.sh"
@@ -16,7 +16,7 @@
     "displayName": "foro",
     "developerName": "foro.sh",
     "shortDescription": "Build and deploy MCP servers on foro.sh",
-    "longDescription": "foro.sh deploys a Python MCP server from a Git repo to a stable public URL on sovereign EU infrastructure. This plugin bundles the foro.sh docs as an MCP server, so guidance stays current instead of going stale, plus two skills that cover the whole path: scaffolding a project that passes the platform's deploy checks, and getting it live at https://<slug>.foro.sh.",
+    "longDescription": "foro.sh deploys a Python or Node MCP server from a Git repo to a stable public URL on sovereign EU infrastructure. This plugin bundles the foro.sh docs as an MCP server, so guidance stays current instead of going stale, plus skills that cover the whole path: scaffolding a new project or adapting an existing one so it passes the platform's deploy checks, designing its tools, and getting it live at https://<slug>.foro.sh.",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],
     "websiteURL": "https://foro.sh",

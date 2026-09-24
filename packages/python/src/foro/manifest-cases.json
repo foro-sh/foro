@@ -393,5 +393,187 @@
       "package.json": "{\"name\": "
     },
     "expect": { "ok": false, "reason": "invalid_shape" }
+  },
+  {
+    "name": "python-egress-ip-entry",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"10.20.30.40:5432\"]\n"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-egress-cidr-entry",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"10.20.0.0/16:443\"]\n"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-egress-hostname-entry",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"sql.database.windows.net:1433\"]\n"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-egress-multiple-entries",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"sql.database.windows.net:1433\", \"10.20.30.40:5432\", \"10.20.0.0/16:443\"]\n"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-egress-empty-list-denies-everything",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = []\n"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "python-egress-missing-port",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"example.com\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-port-zero",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"example.com:0\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-port-too-high",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"example.com:65536\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-blocked-mail-port",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"smtp.example.com:25\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-metadata-endpoint",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"169.254.169.254:80\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-whole-internet",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"0.0.0.0/0:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-wide-range-swallows-a-reserved-one",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"172.16.0.0/12:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-hostname-over-253-chars",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa.aaaa:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-string-instead-of-list",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = \"example.com:443\"\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-over-entry-cap",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"h0.example.com:443\", \"h1.example.com:443\", \"h2.example.com:443\", \"h3.example.com:443\", \"h4.example.com:443\", \"h5.example.com:443\", \"h6.example.com:443\", \"h7.example.com:443\", \"h8.example.com:443\", \"h9.example.com:443\", \"h10.example.com:443\", \"h11.example.com:443\", \"h12.example.com:443\", \"h13.example.com:443\", \"h14.example.com:443\", \"h15.example.com:443\", \"h16.example.com:443\", \"h17.example.com:443\", \"h18.example.com:443\", \"h19.example.com:443\", \"h20.example.com:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "node-egress-non-string-entry",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"index.js\", \"foro\": {\"egress\": [443]}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-shell-metacharacter",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"evil.com:443; rm -rf /\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-embedded-whitespace",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"evil .com:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-embedded-newline",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"evil.com:443\\nother:80\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-ipv6-literal",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"::1:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-cidr-prefix-out-of-range",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"10.0.0.0/33:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-link-local-range",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"169.254.0.0/16:443\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-loopback",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"127.0.0.1:5432\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-platform-bridge-network",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"172.20.0.5:5432\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-submission-port",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"smtp.example.com:587\"]\n"
+    },
+    "expect": { "ok": false, "reason": "invalid_egress" }
+  },
+  {
+    "name": "python-egress-private-ranges-stay-allowlistable",
+    "files": {
+      "pyproject.toml": "[project]\nname = \"my-server\"\n\n[tool.foro]\nentrypoint = \"server.py\"\negress = [\"10.20.30.40:5432\", \"192.168.1.0/24:443\"]\n"
+    },
+    "expect": { "ok": true }
   }
 ]

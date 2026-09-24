@@ -17,9 +17,20 @@ permissions:
   contents: read
 
 jobs:
+  skills:
+    name: Plugin skills are not stale
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: scripts/check-skills.sh
+
   python:
     name: Python tests (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     # The suite starts real servers and waits on ports, so a hang is
     # plausible. Fail in minutes, not the six-hour default.
     timeout-minutes: 15
@@ -34,18 +45,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      # No setup-python: actions/python-versions ships no linux-arm64 build for
+      # 3.10, so on the arm runners uv fetches the interpreter itself.
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
       # `foro check` rejects a repo whose uv.lock has drifted from its
       # pyproject.toml, so this SDK should hold itself to it. --frozen also
       # keeps the run honest: without it uv would quietly relock and the
       # tests would pass against dependencies nobody committed.
       - name: Install locked dependencies
-        # Without this uv picks its own interpreter and the matrix collapses.
+        # Step-scoped on purpose: this picks the interpreter the matrix leg
+        # is for (without it uv picks its own and the matrix collapses), but
+        # the scaffolding tests shell out to `uv lock` inside generated
+        # projects that require >=3.12, and a job-level UV_PYTHON would
+        # follow them in and fail the 3.10 leg.
         env:
           UV_PYTHON: ${{ matrix.python-version }}
         run: uv sync --frozen --dev
@@ -83,7 +96,7 @@ jobs:
 
   typescript:
     name: TypeScript tests (node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     timeout-minutes: 10
     strategy:
       fail-fast: false

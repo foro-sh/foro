@@ -280,11 +280,19 @@ def test_entrypoint_registers_every_tool():
     assert "add" in result.stdout.split(), result.stdout
 '''
 
+# Unpinned, uv takes the newest fastmcp first and backtracks foro to a release
+# that doesn't bound mcp - foro 0.4.0, whose run() binds $MCP_PORT instead of
+# the $PORT the platform sets. 0.11 is the first release that binds $PORT, and
+# every published release since bounds mcp below 2, so this floor rules that
+# pairing out while uv still picks the newest foro. It is a fixed version
+# rather than the running CLI's own on purpose: a tag-only release bumps the
+# package version without publishing it, and a floor nobody can install fails
+# `uv lock`.
 _PYPROJECT_TEMPLATE = '''[project]
 name = "{name}"
 version = "0.1.0"
 requires-python = ">={python_version}"
-dependencies = ["fastmcp", "foro"]
+dependencies = ["fastmcp", "foro>=0.11"]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]
@@ -337,7 +345,6 @@ __pycache__/
 .env
 .pytest_cache/
 .DS_Store
-# Which foro.sh project this directory deploys to - local, and per-clone.
 .foro/
 '''
 

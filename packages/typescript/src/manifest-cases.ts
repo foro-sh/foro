@@ -32,6 +32,7 @@ export type ManifestRejectionReason =
   | 'invalid_dependency_manager'
   | 'unsupported_project'
   | 'unknown_field'
+  | 'invalid_egress'
 
 export interface ManifestCase {
   /** Stable identifier, unique across the table - use it as the test name. */

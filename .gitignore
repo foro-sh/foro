@@ -1,6 +1,9 @@
 # Node
 node_modules/
 package-lock.json
+# ...except the root one: the release toolchain installs from it with
+# `npm ci`, so it has to be committed to pin anything.
+!/package-lock.json
 yarn.lock
 *.tgz
 

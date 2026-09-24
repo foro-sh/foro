@@ -1,6 +1,6 @@
 [project]
 name = "foro"
-version = "0.11.0"
+version = "0.13.1"
 description = "Python SDK for Foro"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -72,4 +72,4 @@ packages = ["src/foro"]
 # fastmcp is here rather than in dependencies because `foro.bridge()` imports
 # it lazily, inside the call - the runtime shim stays dependency-light, and a
 # deployed server brings its own fastmcp anyway.
-dev = ["pytest>=8.0", "fastmcp>=2.0"]
+dev = ["pytest>=8.0", "fastmcp>=3.0"]
