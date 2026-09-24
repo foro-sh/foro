@@ -1,3 +1,18 @@
+## <small>0.15.1 (2026-09-24)</small>
+
+* Merge pull request #112 from foro-sh/fix/comment-hygiene-and-stale-yaml ([bfce05f](https://github.com/foro-sh/foro/commit/bfce05f)), closes [#112](https://github.com/foro-sh/foro/issues/112)
+* Merge remote-tracking branch 'origin/main' into fix/comment-hygiene-and-stale-yaml ([9bd517e](https://github.com/foro-sh/foro/commit/9bd517e))
+* style(python): strip comments from CLI and init ([53f2dd8](https://github.com/foro-sh/foro/commit/53f2dd8))
+* style(python): strip comments from deploy and HTTP modules ([9c2201e](https://github.com/foro-sh/foro/commit/9c2201e))
+* style(python): strip comments from project detection ([7a0adff](https://github.com/foro-sh/foro/commit/7a0adff))
+* style(python): strip comments from runtime and auth modules ([5a381b0](https://github.com/foro-sh/foro/commit/5a381b0))
+* style(python): strip comments from tests ([054474e](https://github.com/foro-sh/foro/commit/054474e))
+* style(typescript): strip comments from manifest-cases ([55b24ff](https://github.com/foro-sh/foro/commit/55b24ff))
+* docs(python): drop foro.yaml from the deploy README ([e68dcb1](https://github.com/foro-sh/foro/commit/e68dcb1))
+* fix(python): point the node-runtime hint at package.json, not foro.yaml ([2aed74c](https://github.com/foro-sh/foro/commit/2aed74c))
+* fix(python): require a project config file, not foro.yaml, in deploy archives ([48ca3b9](https://github.com/foro-sh/foro/commit/48ca3b9))
+* fix(python): treat a missing logs payload as no lines ([7863bd6](https://github.com/foro-sh/foro/commit/7863bd6))
+
 ## 0.15.0 (2026-09-24)
 
 * Merge pull request #110 from foro-sh/feat/dev-once ([6d8ee66](https://github.com/foro-sh/foro/commit/6d8ee66)), closes [#110](https://github.com/foro-sh/foro/issues/110)
