@@ -3,12 +3,6 @@ import { test } from 'node:test'
 
 import { manifestCases } from './manifest-cases.js'
 
-// Sanity checks on the shared table itself - the generator
-// (scripts/generate-manifest-cases.mjs) already enforces these invariants at
-// build time, but that only runs when someone builds this package locally.
-// A real `.test.ts` here means CI catches a malformed table on every push,
-// not just when a maintainer happens to run `npm run build`.
-
 test('manifestCases is non-empty', () => {
   assert.ok(manifestCases.length > 0)
 })

@@ -1,23 +1,8 @@
-/**
- * The shared project-config validation table.
- *
- * foro's `_manifest.py` is a port of foro-sh/platform's
- * `apps/api/src/services/manifest.ts`, and the two can never be allowed to
- * silently disagree about what a valid manifest is - if they do, `foro check`
- * passes locally and the deploy fails, which is the exact gap this SDK exists
- * to close. Both sides therefore run the same table: the Python package
- * through `tests/test_manifest_cases.py`, the platform by importing
- * `manifestCases` from here (foro-sh/foro#5).
- *
- * The cases assert only accept/reject and the rejection reason - the resolved
- * defaults each implementation produces stay covered by its own tests.
- */
+/** Shared project-config validation table. Imported by foro-sh/platform. */
 
 import { rawManifestCases } from './_generated-manifest-cases.js'
 
-/** Mirrors `ManifestRejectionReason` in foro-sh/platform's `@foro/types`.
- *  Kept in sync deliberately: it is what makes a reason added on one side a
- *  compile error on the other. */
+/** Mirrors `ManifestRejectionReason` in foro-sh/platform's `@foro/types`. */
 export type ManifestRejectionReason =
   | 'missing_manifest'
   | 'unsupported_language'
@@ -35,11 +20,7 @@ export type ManifestRejectionReason =
   | 'invalid_egress'
 
 export interface ManifestCase {
-  /** Stable identifier, unique across the table - use it as the test name. */
   readonly name: string
-  /** Files to write into an empty directory before validating it, keyed by
-   *  repo-relative path. Always the config file under test, plus whatever the
-   *  entry-file inference has to find on disk. */
   readonly files: Readonly<Record<string, string>>
   readonly expect:
     | { readonly ok: true }
