@@ -113,4 +113,4 @@ raises a dashboard-actionable error when unset. A local `.env` still works for
 - `uvx foro dev` opens the port and lists the server's real tools.
 - No secret is read from a committed file.
 
-Next: the `deploy-to-foro` skill pushes to GitHub and gets it live.
+Next: the `deploy-to-foro` skill gets it live with `foro deploy`.

@@ -100,6 +100,6 @@ scaffolded tool. If it doesn't respond, it isn't done; read the `foro check` /
 - The user understands: Python or Node, secrets live in the dashboard, and
   the deployed URL is a generated slug, not the project's `name`.
 
-Next: the `deploy-to-foro` skill pushes this to GitHub and gets it live. Before
+Next: the `deploy-to-foro` skill gets it live with `foro deploy`. Before
 replacing the scaffolded example with real tools, the `design-mcp-tools` skill
 covers what makes them cheap to carry and easy for a model to pick correctly.
