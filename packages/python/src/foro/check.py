@@ -1,15 +1,4 @@
-"""`foro check` - statically validate a repo against foro.sh's deploy
-contract, so a failure surfaces instantly and locally instead of as a
-60-second health-check timeout.
-
-Layers two things on top of each other:
-  1. The same pyproject.toml / package.json validation the platform runs at
-     deploy time (_manifest.py, _python_project.py) - same rules, same
-     reason codes.
-  2. Check-only rules the platform can't catch until build time: whether the
-     entrypoint file actually exists, and whether a committed uv.lock is in
-     sync with pyproject.toml.
-"""
+"""Statically validate a repo against foro.sh's deploy contract."""
 
 from __future__ import annotations
 
@@ -23,9 +12,7 @@ from foro._proc import MissingToolError
 from foro._proc import run as _run
 from foro._python_project import DependencyManagerError, detect_dependency_manager
 
-# Breaks the platform's metrics shim (infra/templates/sitecustomize.py),
-# which only patches fastmcp.FastMCP - a warning, not a failure, since the
-# server still deploys and serves tools, it just won't emit tool metrics.
+# sitecustomize.py only patches fastmcp.FastMCP, not mcp.server.fastmcp.FastMCP.
 _WRONG_FASTMCP_IMPORT = "from mcp.server.fastmcp import FastMCP"
 
 
@@ -69,17 +56,12 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
     if manager == "uv":
         lockfile = build_dir / "uv.lock"
         if not lockfile.exists():
-            # Not fatal: the platform falls back to an unlocked `uv sync`
-            # when uv.lock is absent (python-project.ts's
-            # UV_UNLOCKED_INSTALL) - just slower and non-reproducible, not a
-            # rejected deploy.
+            # The platform falls back to unlocked `uv sync` (UV_UNLOCKED_INSTALL).
             warnings.append(
                 "no uv.lock committed - builds will use a slower, non-reproducible "
                 "unlocked install. Run `uv lock`."
             )
         else:
-            # Only this rule needs uv, so a missing uv downgrades it to a
-            # warning rather than failing a repo that is probably fine.
             try:
                 in_sync = _uv_lock_in_sync(build_dir)
             except MissingToolError as err:
@@ -105,15 +87,9 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
 
 
 def _uv_lock_in_sync(build_dir: Path) -> bool:
-    """Raises MissingToolError when `uv` isn't installed - the caller decides
-    what a check it could not run means."""
     return _run(["uv", "lock", "--check"], cwd=build_dir).returncode == 0
 
 
-# Vendored or installed source carries the marker string itself (inside
-# `mcp`/`fastmcp`, or a test asserting on it), and a hit there is a false
-# positive, not the user's code. Any dot-directory is skipped too, which
-# covers .venv, .tox, .git and whatever the next tool invents.
 _SCAN_EXCLUDE_DIRS = {"__pycache__", "node_modules", "site-packages", "venv", "env", "tests"}
 
 
@@ -124,11 +100,6 @@ def _is_scannable(relative: Path) -> bool:
 
 
 def _find_wrong_fastmcp_import(build_dir: Path) -> str | None:
-    """The FastMCP construction that matters doesn't have to live in the
-    entrypoint file - the recommended structure (foro init's own scaffold)
-    puts it in app.py instead, imported by the entrypoint. Scanning every
-    .py file under build_dir (not just the entrypoint) is what keeps this
-    check meaningful for that structure instead of going blind."""
     for path in sorted(build_dir.rglob("*.py")):
         if not _is_scannable(path.relative_to(build_dir)):
             continue
