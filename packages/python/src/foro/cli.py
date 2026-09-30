@@ -592,7 +592,7 @@ def deploy(
 
     typer.echo(f"- deploying {started.slug} ({started.deployment_id[:8]})")
     if detach:
-        typer.echo(f"  {started.url}")
+        typer.echo(f"  {normalize_url(started.url)}")
         return
 
     _stream_deploy(host, creds.token, started)
@@ -644,7 +644,7 @@ def _stream_deploy(host: str, token: str, started) -> None:
         raise _fail(err, "read the deployment") from None
 
     if final["status"] == "live":
-        typer.secho(f"✓ live at {started.url}", fg=typer.colors.GREEN)
+        typer.secho(f"✓ live at {normalize_url(started.url)}", fg=typer.colors.GREEN)
         return
 
     typer.secho(f"✗ deploy {final['status']}", fg=typer.colors.RED)
