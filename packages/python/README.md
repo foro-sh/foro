@@ -227,6 +227,7 @@ if __name__ == "__main__":
 | --- | --- |
 | `foro.run(server, *, port=None)` | The one correct way to start a server for foro.sh. Accepts any FastMCP-shaped server (standalone `fastmcp.FastMCP`, `mcp.server.fastmcp.FastMCP`, or a low-level `Server`) — it's duck-typed, not tied to a specific class. |
 | `foro.secret(name)` | Read a required secret from the environment, raising a dashboard-actionable error if it's missing. Set secrets in your project's Secrets tab on the dashboard; they arrive as env vars at deploy time. |
+| `foro.skills(server, path="skills")` | Serve every `<path>/<name>/SKILL.md` as an [Agent Skill over MCP](https://modelcontextprotocol.io/extensions/skills/overview) (`io.modelcontextprotocol/skills`): the extension capability, `skills/list` and `skills/get` with a SHA-256 manifest per skill, and each file over `resources/read` at `skill://<name>/<file>`. FastMCP 4+. Fails at startup if a skill's frontmatter `name` isn't its directory name. |
 
 Bare `foro` (what a deployed container installs — no `[cli]` extra) stays
 dependency-free, so a deployed container never pulls in CLI tooling it

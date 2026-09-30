@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 import sys
 
-__all__ = ["run", "secret", "bridge"]
+from foro._skills import skills
+
+__all__ = ["run", "secret", "bridge", "skills"]
 
 # Same art as platform:infra/templates/foro-wrapper.sh. Duplicated because
 # nothing links the two repos at runtime.

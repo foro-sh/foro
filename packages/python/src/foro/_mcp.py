@@ -24,7 +24,7 @@ async def _handshake(url: str, timeout: float) -> list[str]:
     from mcp.client.streamable_http import streamable_http_client
 
     with anyio.fail_after(timeout):
-        async with streamable_http_client(url) as (read, write, _):
+        async with streamable_http_client(url) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.list_tools()
