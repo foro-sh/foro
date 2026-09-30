@@ -23,7 +23,9 @@ uvx foro dev
 
 `foro init` scaffolds a working [FastMCP](https://gofastmcp.com) server;
 `foro dev` runs it exactly as foro.sh will and confirms it would pass the
-platform's health check. Once it looks good:
+platform's health check, and opens the
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) against it
+(needs Node.js 22.19+; `--no-inspect` skips it). Once it looks good:
 
 ```bash
 git init && git add -A && git commit -m "init" && gh repo create --push
@@ -41,7 +43,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | --- | --- |
 | `foro init [name]` | Scaffold a new project, or record an existing one's foro settings in its `pyproject.toml` (run with no argument). `--yes` takes every default without prompting, for CI and coding agents |
 | `foro check [path]` | Validate a repo against foro.sh's deploy contract before you push |
-| `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check. `--once` verifies and exits instead of staying up, for CI and coding agents |
+| `foro dev [path]` | Run the server locally exactly as foro.sh will, and confirm it would pass the health check. `--once` verifies and exits instead of staying up, for CI and coding agents. Opens the MCP Inspector unless `--no-inspect` or `--once` |
 | `foro verify <url>` | Prove a deployed server actually serves MCP, by opening a session and listing its tools |
 | `foro auth <login\|status\|logout\|token>` | Sign in to foro.sh, so the CLI can act on your behalf |
 | `foro deploy [path]` | Deploy this directory and stream the build until it's live |
