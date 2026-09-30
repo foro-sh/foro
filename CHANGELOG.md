@@ -1,3 +1,24 @@
+## 0.16.0 (2026-09-30)
+
+* feat(python)!: move to mcp 2.x and fastmcp 4 ([38f4e94](https://github.com/foro-sh/foro/commit/38f4e94))
+* Merge pull request #113 from foro-sh/dependabot/npm_and_yarn/packages/typescript/npm-56e245307c ([1e01c46](https://github.com/foro-sh/foro/commit/1e01c46)), closes [#113](https://github.com/foro-sh/foro/issues/113)
+* Merge pull request #114 from foro-sh/dependabot/github_actions/astral-sh/setup-uv-10.2.0 ([4cf26d2](https://github.com/foro-sh/foro/commit/4cf26d2)), closes [#114](https://github.com/foro-sh/foro/issues/114)
+* Merge pull request #115 from foro-sh/dependabot/npm_and_yarn/npm-ba56fc004c ([392eba2](https://github.com/foro-sh/foro/commit/392eba2)), closes [#115](https://github.com/foro-sh/foro/issues/115)
+* Merge pull request #116 from foro-sh/feat/skills-over-mcp ([c65ff3e](https://github.com/foro-sh/foro/commit/c65ff3e)), closes [#116](https://github.com/foro-sh/foro/issues/116)
+* fix(python): parse skill frontmatter with an anchored match ([f5e8588](https://github.com/foro-sh/foro/commit/f5e8588))
+* feat(python): serve agent skills over mcp ([668cfd3](https://github.com/foro-sh/foro/commit/668cfd3))
+* feat(typescript): serve agent skills over mcp ([c5a95f2](https://github.com/foro-sh/foro/commit/c5a95f2))
+* chore(deps-dev): bump @types/node ([0b16c01](https://github.com/foro-sh/foro/commit/0b16c01))
+* chore(deps-dev): bump the npm group with 3 updates ([76d0bf2](https://github.com/foro-sh/foro/commit/76d0bf2))
+* chore(deps): bump astral-sh/setup-uv from 10.1.0 to 10.2.0 ([582595b](https://github.com/foro-sh/foro/commit/582595b))
+
+### BREAKING CHANGE
+
+* foro now requires mcp>=2.2,<3, so a project pinned
+to fastmcp 3 (mcp<2) no longer resolves alongside it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
 ## <small>0.15.1 (2026-09-24)</small>
 
 * Merge pull request #112 from foro-sh/fix/comment-hygiene-and-stale-yaml ([bfce05f](https://github.com/foro-sh/foro/commit/bfce05f)), closes [#112](https://github.com/foro-sh/foro/issues/112)
