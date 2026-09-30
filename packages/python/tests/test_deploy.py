@@ -303,3 +303,21 @@ def test_gitignore_offer_does_not_prompt_without_a_tty(tmp_path, capsys):
 
     assert not (tmp_path / ".gitignore").exists()
     assert ".foro" in capsys.readouterr().out
+
+
+def test_a_live_deploy_prints_the_mcp_endpoint(monkeypatch, capsys):
+    from foro import cli
+
+    started = deploy.Started(
+        slug="swift-harbor-a3f2",
+        deployment_id="a1b2c3d4eeeeeeee",
+        url="https://swift-harbor-a3f2.foro.sh",
+        created=False,
+    )
+    monkeypatch.setattr(cli, "stream_build", lambda *a, **k: [])
+    monkeypatch.setattr(cli, "stream_deploy", lambda *a, **k: [])
+    monkeypatch.setattr(cli, "get_deployment", lambda *a, **k: {"status": "live"})
+
+    cli._stream_deploy("foro.sh", "tok", started)
+
+    assert "✓ live at https://swift-harbor-a3f2.foro.sh/mcp" in capsys.readouterr().out

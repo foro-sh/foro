@@ -227,3 +227,21 @@ def test_auth_token_prints_exactly_the_stored_token(logged_in):
 
     assert result.exit_code == 0
     assert result.stdout == "foro_pat_" + "a" * 43 + "\n"
+
+
+def test_detach_prints_the_mcp_endpoint(logged_in, tmp_path, monkeypatch):
+    """`--detach` must print the client URL, not the origin."""
+    from foro.deploy import Started
+
+    started = Started(
+        slug="swift-harbor-a3f2",
+        deployment_id="a1b2c3d4eeeeeeee",
+        url="https://swift-harbor-a3f2.foro.sh",
+        created=False,
+    )
+    monkeypatch.setattr("foro.cli.deploy_project", lambda *a, **k: started)
+
+    result = runner.invoke(app, ["deploy", str(tmp_path), "--detach", "--skip-check"])
+
+    assert result.exit_code == 0, result.stdout
+    assert "https://swift-harbor-a3f2.foro.sh/mcp" in result.stdout

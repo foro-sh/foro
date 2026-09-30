@@ -68,8 +68,7 @@ $ foro verify https://swift-harbor-a3f2.foro.sh
 Tools: get_forecast, list_cities
 ```
 
-The `/mcp` path is appended when you leave it off, so the URL `foro deploy`
-printed works as-is.
+The `/mcp` path is appended when you leave it off, so the origin works too.
 
 ## Signing in
 
@@ -166,7 +165,7 @@ $ foro deploy
 cloning build context
   │ #8 exporting layers
 health check passed
-✓ live at https://swift-harbor-a3f2.foro.sh
+✓ live at https://swift-harbor-a3f2.foro.sh/mcp
 ```
 
 `foro check` runs first, so nothing that can't build gets uploaded. The
