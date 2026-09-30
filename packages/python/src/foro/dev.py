@@ -11,7 +11,7 @@ from pathlib import Path
 
 from foro._manifest import parse_and_validate
 from foro._mcp import handshake, local_url
-from foro._proc import popen
+from foro._proc import popen, run
 
 DEFAULT_TIMEOUT = 60.0
 POLL_INTERVAL = 0.5
@@ -19,6 +19,13 @@ POLL_INTERVAL = 0.5
 
 class DevError(Exception):
     pass
+
+
+class InspectorUnavailable(Exception):
+    pass
+
+
+INSPECTOR_MIN_NODE = (22, 19)
 
 
 @dataclass
@@ -89,6 +96,35 @@ def _unhealthy_reason(process: subprocess.Popen, port: int, timeout: float) -> s
 
 def mcp_handshake(port: int) -> list[str]:
     return handshake(local_url(port))
+
+
+def _check_node() -> None:
+    out = run(["node", "--version"]).stdout.strip().lstrip("v")
+    try:
+        found = tuple(int(n) for n in out.split(".")[:2])
+    except ValueError:
+        return
+    if found < INSPECTOR_MIN_NODE:
+        need = ".".join(map(str, INSPECTOR_MIN_NODE))
+        raise InspectorUnavailable(
+            f"Node {out} is too old for the MCP Inspector, which needs {need}+ - upgrade it, or pass --no-inspect"
+        )
+
+
+def start_inspector(port: int) -> subprocess.Popen:
+    _check_node()
+    return popen(
+        [
+            "npx",
+            "-y",
+            "@modelcontextprotocol/inspector",
+            "--transport",
+            "http",
+            "--server-url",
+            local_url(port),
+        ],
+        stdin=subprocess.DEVNULL,
+    )
 
 
 def stop(process: subprocess.Popen) -> None:
