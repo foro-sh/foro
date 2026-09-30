@@ -25,7 +25,8 @@ permissions:
 jobs:
   stamp:
     name: Stamp manifests and lockfiles
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore: stamp ') }}
+    # Quoted: an unquoted `!startsWith` is a YAML tag and GitHub rejects the file.
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: stamp ') }}"
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     steps:
       - name: Mint a release token
