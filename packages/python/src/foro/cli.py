@@ -46,7 +46,7 @@ from foro.deploy import deploy as deploy_project
 from foro.logs import latest_deployment_id, read_deployment, read_runtime, stream_runtime
 from foro.projects import ProjectError, get_project, list_deployments, list_projects
 from foro.projects import link as link_project
-from foro.dev import DevError, run_dev, stop
+from foro.dev import DevError, InspectorUnavailable, run_dev, start_inspector, stop
 from foro._proc import MissingToolError
 from foro.init import (
     GitInitError,
@@ -281,6 +281,11 @@ def dev(
         help="Verify and exit instead of leaving the server running - the form "
         "to use when a script or a coding agent drives it.",
     ),
+    inspect: bool = typer.Option(
+        True,
+        "--inspect/--no-inspect",
+        help="Open the MCP Inspector against the running server (needs Node.js). Never runs with --once.",
+    ),
 ) -> None:
     """Run the server locally the way foro.sh will."""
     try:
@@ -299,11 +304,22 @@ def dev(
         stop(process)
         return
 
+    inspector = None
+    if inspect:
+        try:
+            inspector = start_inspector(result.port)
+        except (MissingToolError, InspectorUnavailable) as err:
+            typer.secho(f"warning: no inspector - {err}", fg=typer.colors.YELLOW)
+
     typer.echo("Press Ctrl+C to stop.")
     try:
         process.wait()
     except KeyboardInterrupt:
+        pass
+    finally:
         stop(process)
+        if inspector is not None:
+            stop(inspector)
 
 
 @app.command()

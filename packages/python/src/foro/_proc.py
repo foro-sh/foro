@@ -8,6 +8,8 @@ from pathlib import Path
 _INSTALL_HINTS = {
     "uv": "install it from https://docs.astral.sh/uv/getting-started/installation/",
     "git": "install it from https://git-scm.com/downloads",
+    "node": "install Node.js 22.19+ from https://nodejs.org, or pass --no-inspect",
+    "npx": "install Node.js 22.19+ from https://nodejs.org, or pass --no-inspect",
 }
 
 
