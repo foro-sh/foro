@@ -7,6 +7,22 @@
 * docs(python): document foro dev inspector ([ec9784e](https://github.com/foro-sh/foro/commit/ec9784e))
 * feat(python): launch MCP Inspector from foro dev ([01653b9](https://github.com/foro-sh/foro/commit/01653b9))
 
+## [0.18.0](https://github.com/foro-sh/foro/compare/v0.17.0...v0.18.0) (2026-09-30)
+
+
+### Features
+
+* **plugin:** add the foro Cursor plugin ([fb7c5b5](https://github.com/foro-sh/foro/commit/fb7c5b520646ccf230f0fbaa284e07e29ae21f61))
+* **plugin:** add the foro Cursor plugin ([c72bb5c](https://github.com/foro-sh/foro/commit/c72bb5ca103a235acf4758a012b79eacc1969380))
+
+
+### Bug Fixes
+
+* **python:** install pytest as a dev dependency in foro init scaffolds ([bb1c5c5](https://github.com/foro-sh/foro/commit/bb1c5c58d31c52a3376d421a9c97c32a5400f768))
+* **python:** install pytest as a dev dependency in foro init scaffolds ([761cd00](https://github.com/foro-sh/foro/commit/761cd000503e1f75c5e95fa547fe93de4e77535d))
+* **python:** print the /mcp endpoint on foro deploy success ([c179f98](https://github.com/foro-sh/foro/commit/c179f98d938809f15921617a2592a87b1c194f14))
+* **python:** print the /mcp endpoint on foro deploy success ([a38977c](https://github.com/foro-sh/foro/commit/a38977c6e71fceadae360bc270b41b5012faf5e6))
+
 ## 0.16.0 (2026-09-30)
 
 * feat(python)!: move to mcp 2.x and fastmcp 4 ([38f4e94](https://github.com/foro-sh/foro/commit/38f4e94))
