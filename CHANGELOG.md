@@ -1,3 +1,12 @@
+## 0.17.0 (2026-09-30)
+
+* Merge branch 'main' into feat/dev-inspector ([301be71](https://github.com/foro-sh/foro/commit/301be71))
+* Merge pull request #117 from foro-sh/feat/dev-inspector ([2d29121](https://github.com/foro-sh/foro/commit/2d29121)), closes [#117](https://github.com/foro-sh/foro/issues/117)
+* Merge pull request #118 from foro-sh/fix/init-missing-pyproject ([8345e0a](https://github.com/foro-sh/foro/commit/8345e0a)), closes [#118](https://github.com/foro-sh/foro/issues/118)
+* fix(cli): fail fast in foro init when pyproject.toml is missing ([25ef699](https://github.com/foro-sh/foro/commit/25ef699))
+* docs(python): document foro dev inspector ([ec9784e](https://github.com/foro-sh/foro/commit/ec9784e))
+* feat(python): launch MCP Inspector from foro dev ([01653b9](https://github.com/foro-sh/foro/commit/01653b9))
+
 ## 0.16.0 (2026-09-30)
 
 * feat(python)!: move to mcp 2.x and fastmcp 4 ([38f4e94](https://github.com/foro-sh/foro/commit/38f4e94))
