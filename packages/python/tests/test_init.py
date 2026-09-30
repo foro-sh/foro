@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 
 from typer.testing import CliRunner
 
@@ -158,11 +159,18 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "tests" / "test_tools.py").exists()
     assert (target / "pyproject.toml").exists()
     assert "[tool.foro]" not in (target / "pyproject.toml").read_text()
+    assert "pytest>=8.0" in (target / "pyproject.toml").read_text()
     assert (target / "uv.lock").exists()
+    assert re.search(r'^name = "pytest"$', (target / "uv.lock").read_text(), re.MULTILINE)
     assert (target / "README.md").exists()
     assert ".foro/" in (target / ".gitignore").read_text().splitlines()
     assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
+
+    pytest_run = subprocess.run(
+        ["uv", "run", "pytest", "-q"], cwd=target, capture_output=True, text=True
+    )
+    assert pytest_run.returncode == 0, pytest_run.stdout + pytest_run.stderr
 
     manifest = parse_and_validate(target, ".")
     assert manifest.name == "scaffolded"

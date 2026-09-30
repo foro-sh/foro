@@ -283,8 +283,8 @@ class ScaffoldError(Exception):
 
 
 def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False) -> None:
-    """Write a from-scratch project. `uv lock` runs last; failure deletes
-    only files this call created."""
+    """Write a from-scratch project. `uv add --dev pytest` locks and installs
+    last; failure deletes only files this call created."""
     created_root = not dir_path.exists()
     written: list[Path] = []
 
@@ -316,15 +316,15 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         write(dir_path / ".env.example", _ENV_EXAMPLE_TEMPLATE)
 
         try:
-            _run(["uv", "lock"], cwd=dir_path, check=True)
+            _run(["uv", "add", "--dev", "pytest>=8.0"], cwd=dir_path, check=True)
         except MissingToolError as err:
             raise ScaffoldError(
-                f"{err}. A scaffolded project is locked with `uv lock`, and foro dev "
+                f"{err}. A scaffolded project is locked with `uv`, and foro dev "
                 "runs it with `uv run`."
             ) from None
         except subprocess.CalledProcessError as err:
             raise ScaffoldError(
-                f"`uv lock` failed in {dir_path}:\n{(err.stderr or '').strip()}"
+                f"`uv add --dev pytest` failed in {dir_path}:\n{(err.stderr or '').strip()}"
             ) from None
     except BaseException:
         _remove_scaffold(dir_path, written, created_root)
@@ -340,6 +340,8 @@ def _remove_scaffold(dir_path: Path, written: list[Path], created_root: bool) ->
         return
     for path in written:
         path.unlink(missing_ok=True)
+    (dir_path / "uv.lock").unlink(missing_ok=True)
+    shutil.rmtree(dir_path / ".venv", ignore_errors=True)
     for name in ("tools", "tests"):
         directory = dir_path / name
         if directory.is_dir() and not any(directory.iterdir()):
