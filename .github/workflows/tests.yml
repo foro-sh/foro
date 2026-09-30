@@ -17,6 +17,76 @@ permissions:
   contents: read
 
 jobs:
+  # PR-only: the reusable call from semantic-release.yml is a `push`, and
+  # those commits were already linted on their own PRs. `github.event_name`
+  # is the caller's event, so this stays skipped on a release-gating run.
+  commitlint:
+    name: Lint commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+
+      - name: Lint PR commits
+        run: |
+          npx commitlint \
+            --from ${{ github.event.pull_request.base.sha }} \
+            --to ${{ github.event.pull_request.head.sha }} \
+            --verbose
+
+  # release-please bumps the manifest on the first Release PR commit; stamp
+  # then rewrites the SDK versions. Until that second commit, Tests would
+  # otherwise go green (lockfiles still match the *old* versions) and a
+  # merge would tag vX with vX-1 in the packages. This job fails that HEAD.
+  # It also runs on the publish-gating call (caller's event is `push`, not
+  # `workflow_call`) so an unstamped merge still cannot upload. Regular
+  # PRs keep all three versions in lockstep, so the check is a no-op there.
+  release-versions:
+    name: Release versions match
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Manifest and SDK versions must agree
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+
+          manifest = json.loads(
+              pathlib.Path(".release-please-manifest.json").read_text()
+          )["."]
+          typescript = json.loads(
+              pathlib.Path("packages/typescript/package.json").read_text()
+          )["version"]
+          pyproject = pathlib.Path("packages/python/pyproject.toml").read_text()
+          match = re.search(r'(?m)^version = "([^"]*)"$', pyproject)
+          if match is None:
+              sys.exit("packages/python/pyproject.toml: no top-level version")
+          python = match.group(1)
+
+          print(f"manifest={manifest} python={python} typescript={typescript}")
+          if not (manifest == python == typescript):
+              sys.exit(
+                  "release versions disagree; wait for stamp-release.yml "
+                  "to rewrite the SDK manifests"
+              )
+          PY
+
   skills:
     name: Plugin skills are not stale
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm

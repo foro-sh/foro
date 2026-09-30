@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Stamp a release version into both SDK manifests.
+# Stamp a release version into both SDK manifests and their lockfiles.
 #
-# semantic-release owns the version number but ships no Python plugin, so the
-# Python manifest has to be rewritten by hand. This runs from the release's
-# `prepareCmd`, which means the bumped files land *inside* the same
-# `chore(release):` commit that @semantic-release/git creates - and therefore
-# inside the tag. The previous approach (a `sed` step after `npx
-# semantic-release`) could only ever produce a follow-up commit, leaving the
-# tagged tree still carrying the old version.
+# release-please owns the version number (CHANGELOG + the manifest) but not
+# the lockfiles. This runs on the Release PR branch so the bumped files land
+# on that PR before merge - and therefore inside the tag. Extra-filing
+# package.json from release-please would desync package-lock.json and fail
+# `npm ci` on the PR.
 set -euo pipefail
 
 VERSION="${1:?usage: set-version.sh <version>}"

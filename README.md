@@ -98,7 +98,9 @@ to a GitHub repo builds from its branch instead. Nothing here is locked to that 
 
 Issues and PRs welcome. Commit messages follow
 [Conventional Commits](https://www.conventionalcommits.org/) — commitlint
-enforces it on PRs, and semantic-release uses it to cut the changelog.
+enforces it on PRs, and release-please uses it to cut the changelog. Merge
+feature PRs freely; a Release PR accumulates them and publishes when you
+merge it.
 
 ```bash
 npm install

@@ -1,9 +1,8 @@
-name: Semantic Release
+name: Release
 
 on:
   push:
     branches: [main]
-  pull_request:
   # npm allows exactly one trusted-publisher workflow filename per package,
   # and it resolves the *calling* workflow - so this file is the only one that
   # can ever authenticate an npm publish. Manual recovery therefore has to be
@@ -23,73 +22,25 @@ permissions:
   id-token: write
 
 concurrency:
-  group: semantic-release-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  commitlint:
-    name: Lint commit messages
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm ci --no-fund --no-audit
-
-      - name: Lint PR commits
-        if: github.event_name == 'pull_request'
-        run: |
-          npx commitlint \
-            --from ${{ github.event.pull_request.base.sha }} \
-            --to ${{ github.event.pull_request.head.sha }} \
-            --verbose
-
-      - name: Lint pushed commits
-        if: github.event_name == 'push'
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
-        run: |
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            npx commitlint --from "HEAD~1" --to "HEAD" --verbose
-          else
-            npx commitlint --from "$BEFORE" --to "$AFTER" --verbose
-          fi
-
-  # The release gate. tests.yml has no `push` trigger of its own precisely so
-  # that this is the run that decides - a separate workflow triggered by the
-  # same push reports independently and cannot block anything, which is how
-  # every suite could be red while semantic-release published anyway.
-  #
-  # Skipped on pull_request: tests.yml already runs itself there, and a second
-  # copy through here would double every PR's CI for no extra signal.
-  tests:
-    name: Tests
+  # Opens or updates the Release PR on an ordinary push. When that PR is
+  # merged, this run creates the tag and GitHub release; tests and publish
+  # jobs below then fire. Skipped on a dispatch so recovery can republish
+  # without proposing a new version.
+  release-please:
+    name: Release Please
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/tests.yml
-
-  release:
-    name: Release
-    needs: [commitlint, tests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # GitHub-hosted: the action is a Node 24 JavaScript action, and ubuntu-latest
+    # is what GitHub documents it against. The job only talks to the API.
+    runs-on: ubuntu-latest
     outputs:
-      published: ${{ steps.semantic-release.outputs.published }}
-      version: ${{ steps.semantic-release.outputs.version }}
-      sha: ${{ steps.released-commit.outputs.sha }}
-      python: ${{ steps.changed.outputs.python }}
-      typescript: ${{ steps.changed.outputs.typescript }}
+      # Manifest mode sometimes leaves the root `release_created` unset and
+      # only sets `releases_created`. Downstream jobs key off this output.
+      release_created: ${{ steps.release.outputs.releases_created }}
+      sha: ${{ steps.release.outputs.sha || steps.release.outputs['.--sha'] }}
     steps:
       - name: Mint a release token
         id: app-token
@@ -98,31 +49,57 @@ jobs:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
+      # GITHUB_TOKEN cannot push past main's branch protection, and would not
+      # retrigger Tests on the Release PR. The app token does both.
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # The publish gate. tests.yml has no `push` trigger of its own precisely so
+  # that this is the run that decides - a separate workflow triggered by the
+  # same push reports independently and cannot block anything.
+  #
+  # Feature PRs and the Release PR already ran this suite; this is the last
+  # check before an upload, on the exact tagged commit.
+  tests:
+    name: Tests
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tests.yml
+
+  # The release commit always rewrites both manifests, so measuring HEAD
+  # would mark every package as changed on every release. HEAD is the tagged
+  # commit; HEAD^ is main before it. The previous tag is the newest one
+  # reachable from that parent.
+  changed:
+    name: Detect changed packages
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    outputs:
+      python: ${{ steps.changed.outputs.python }}
+      typescript: ${{ steps.changed.outputs.typescript }}
+    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ needs.release-please.outputs.sha }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-
-      - name: Install dependencies
-        run: npm ci --no-fund --no-audit
-
-      # Must run before the release step: semantic-release's own
-      # `chore(release):` commit rewrites both manifests, so measuring after it
-      # would report every package as changed on every single release.
       - name: Detect changed packages
         id: changed
         run: |
           empty_tree="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-          base="$(git describe --tags --abbrev=0 2>/dev/null || echo "$empty_tree")"
+          base="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "$empty_tree")"
 
-          files="$(git diff --name-only "$base" HEAD)"
-          echo "comparing ${base}..HEAD"
+          files="$(git diff --name-only "$base" HEAD^)"
+          echo "comparing ${base}..HEAD^"
           echo "$files"
 
           for package in python typescript; do
@@ -133,40 +110,6 @@ jobs:
             fi
           done
 
-      # The root install only covers the root package (commitlint,
-      # semantic-release and its plugins) - packages/typescript is a separate
-      # npm project with its own package-lock.json, so its own dependencies
-      # (e.g. @types/node, needed once src/manifest-cases.test.ts started
-      # referencing node:test/node:assert) have to be installed explicitly
-      # before the root build script shells into it.
-      - name: Install typescript package dependencies
-        run: npm ci
-        working-directory: packages/typescript
-
-      - name: Build
-        run: npm run build
-
-      # `published` and `version` are written by scripts/record-release.sh via
-      # the exec plugin's successCmd - `npx semantic-release` is a plain shell
-      # command and sets no outputs of its own.
-      #
-      # GITHUB_TOKEN here is the app-token step's output, not the default
-      # secrets.GITHUB_TOKEN - see the "Mint a release token" step above for
-      # why: the default token can't push past main's branch protection.
-      - name: Release
-        id: semantic-release
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: npx semantic-release
-
-      # The release commit is created and pushed by @semantic-release/git, so
-      # local HEAD now carries the bumped manifests. The publish jobs build
-      # this exact commit rather than a branch name, which would otherwise race
-      # with anything landing on main in the meantime.
-      - name: Record released commit
-        id: released-commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
   # These steps duplicate publish-python.yml rather than calling it. PyPI's
   # trusted publishing cannot authorize an upload that runs inside a reusable
   # workflow, so `uses:` is not available here - the upload has to sit in the
@@ -174,8 +117,12 @@ jobs:
   # manual recovery path; both files need a trusted publisher on PyPI.
   publish-python:
     name: Publish Python SDK
-    needs: release
-    if: needs.release.outputs.published == 'true' && needs.release.outputs.python == 'true'
+    needs: [release-please, tests, changed]
+    if: >-
+      needs.release-please.result == 'success'
+      && needs.release-please.outputs.release_created == 'true'
+      && needs.tests.result == 'success'
+      && needs.changed.outputs.python == 'true'
     # GitHub-hosted deliberately, not a Blacksmith runner: pypa's publish
     # action is a container action with an amd64-only image, so an arm64
     # runner fails with `exec /app/twine-upload.sh: exec format error`.
@@ -187,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.sha }}
+          ref: ${{ needs.release-please.outputs.sha }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -209,20 +156,21 @@ jobs:
   #   - someone dispatched this workflow with publish_npm (recovery, e.g. the
   #     release succeeded but the upload failed)
   #
-  # `always()` is needed because the release job is skipped entirely on a
-  # dispatch, and a skipped dependency would otherwise skip this job too.
-  # needs.release.result is checked explicitly so a *failed* release still
-  # blocks the automatic arm.
+  # `always()` is needed because the release-please job is skipped entirely
+  # on a dispatch, and a skipped dependency would otherwise skip this job
+  # too. needs.tests.result is checked on the automatic arm so a red suite
+  # still blocks the upload.
   #
   # id-token: write has to be granted here as well as in the called workflow.
   publish-typescript:
     name: Publish TypeScript SDK
-    needs: release
+    needs: [release-please, tests, changed]
     if: >-
       always() && (
-        (needs.release.result == 'success'
-          && needs.release.outputs.published == 'true'
-          && needs.release.outputs.typescript == 'true')
+        (needs.release-please.result == 'success'
+          && needs.release-please.outputs.release_created == 'true'
+          && needs.tests.result == 'success'
+          && needs.changed.outputs.typescript == 'true')
         || (github.event_name == 'workflow_dispatch' && inputs.publish_npm)
       )
     permissions:
@@ -232,5 +180,5 @@ jobs:
     with:
       # Empty on a dispatch, which makes the called workflow check out the
       # dispatched ref - main's head, already carrying the version bump.
-      ref: ${{ needs.release.outputs.sha }}
+      ref: ${{ needs.release-please.outputs.sha }}
     secrets: inherit

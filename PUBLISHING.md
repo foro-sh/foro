@@ -1,7 +1,10 @@
 # Publishing
 
-Both SDKs publish automatically on merge to `main`. Nothing is published from
-a pull request.
+Feature PRs merge to `main` without publishing. release-please opens (or
+updates) one Release PR that accumulates them. Merging *that* PR cuts the
+version and publishes.
+
+Nothing is published from a pull request, including the Release PR itself.
 
 ## Package names
 
@@ -10,24 +13,40 @@ a pull request.
 | PyPI | `foro` | `packages/python` |
 | npm | `@foro-sh/foro` | `packages/typescript` |
 
-## What happens on merge
+## What happens on merge to main
 
-`.github/workflows/semantic-release.yml` runs:
+`.github/workflows/semantic-release.yml` (Actions name **Release**; the
+filename is load-bearing for trusted publishing) runs
+googleapis/release-please-action:
 
-1. **commitlint** — rejects commits that don't follow Conventional Commits.
-2. **release** — records which packages changed in the merged range, then runs
-   semantic-release. If the commits warrant a release, it stamps the new
-   version into both manifests (`scripts/set-version.sh`, invoked from the
-   exec plugin's `prepareCmd`), commits them as `chore(release):`, tags, and
-   publishes GitHub release notes.
-3. **publish-python / publish-typescript** — each runs only when a release was
-   cut *and* that package's directory changed in the merged range.
+- An ordinary `feat`/`fix` merge **updates the Release PR**
+  (`chore(main): release 0.x.y`) with the combined changelog. Docs, `ci`,
+  and `chore` commits do not open one.
+- Merging the Release PR **creates the tag and GitHub release**. Tests then
+  run on that commit, and `publish-python` / `publish-typescript` each run
+  only when that package's directory changed in the merged range.
 
-So a PR touching only `packages/python` publishes to PyPI and leaves npm
-alone; a PR touching only docs publishes nothing.
+A separate workflow (`.github/workflows/stamp-release.yml`) runs on the
+Release PR branch and invokes `scripts/set-version.sh` so both manifests and
+their lockfiles land on the PR before you merge it. Extra-filing
+`package.json` from release-please would desync `package-lock.json` and fail
+`npm ci`.
 
-Both publish jobs build the exact commit carrying the version bump, not a
-branch name, so a merge landing moments later can't be picked up by mistake.
+So a Release PR whose source commits only touched `packages/python`
+publishes to PyPI and leaves npm alone; a docs-only stretch of `main`
+opens no Release PR at all.
+
+Both publish jobs build the exact tagged commit, not a branch name, so a
+merge landing moments later can't be picked up by mistake.
+
+Merge the Release PR with a merge commit or squash. Do not rebase-merge it:
+release-please identifies the release from the merged pull request, and a
+rebase drops that signal. Wait until `Tests / Release versions match` is
+green — the first Tests run is against unstamped manifests and that job
+fails until `stamp-release.yml` rewrites them.
+
+Commitlint now runs as `Tests / Lint commit messages`. If branch protection
+still requires `Semantic Release / Lint commit messages`, update that check.
 
 The npm upload is a reusable-workflow call into `publish-typescript.yml`. The
 PyPI upload cannot be — see [Credentials](#credentials) — so those steps are
@@ -35,21 +54,21 @@ duplicated inside `semantic-release.yml`. If you change one, change both.
 
 ### Change detection
 
-Measured over the push range (`github.event.before..HEAD`) **before**
-semantic-release runs. That ordering matters: the `chore(release):` commit
-rewrites both manifests, so measuring afterwards would mark every package as
-changed on every release.
+Measured from the previous tag to **`HEAD^`** (main before the release
+commit). The release commit rewrites both manifests, so measuring `HEAD`
+would mark every package as changed on every release.
 
 ## Versioning: staying on 0.x
 
 The SDKs and CLI are pre-stable, so releases must stay on `0.x`.
 
-semantic-release derives the next version from the most recent git tag, and
-under semver a breaking change would normally jump to `1.0.0`. To prevent
-that, `.releaserc.json` maps breaking changes to a **minor** bump:
+release-please derives the next version from `.release-please-manifest.json`
+(bootstrapped from the last tag). Under semver a breaking change would
+normally jump to `1.0.0`. To prevent that, `release-please-config.json` sets:
 
 ```json
-"releaseRules": [{ "breaking": true, "release": "minor" }]
+"bump-minor-pre-major": true,
+"bump-patch-for-minor-pre-major": false
 ```
 
 So while pre-stable:
@@ -60,7 +79,7 @@ So while pre-stable:
 | `feat:` | minor — `0.1.0` → `0.2.0` |
 | `feat!:` / `BREAKING CHANGE:` | minor — `0.1.0` → `0.2.0` |
 
-**When the SDKs are ready to go stable**, drop that `releaseRules` entry. The
+**When the SDKs are ready to go stable**, drop `bump-minor-pre-major`. The
 next breaking change then bumps to `1.0.0` on its own.
 
 ## Manual publishing
@@ -70,8 +89,8 @@ rather than cutting another release. Dispatching builds the branch head, which
 after a release is the commit carrying the version bump.
 
 - **PyPI** — dispatch **Publish Python SDK**.
-- **npm** — dispatch **Semantic Release** with `publish_npm` checked. It skips
-  the release itself and only runs the npm upload. Dispatching *Publish
+- **npm** — dispatch **Release** with `publish_npm` checked. It skips
+  release-please and only runs the npm upload. Dispatching *Publish
   TypeScript SDK* directly is not possible, by design — see above.
 
 ## Credentials
