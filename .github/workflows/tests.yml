@@ -56,7 +56,7 @@ jobs:
       - name: Install locked dependencies
         # Step-scoped on purpose: this picks the interpreter the matrix leg
         # is for (without it uv picks its own and the matrix collapses), but
-        # the scaffolding tests shell out to `uv lock` inside generated
+        # the scaffolding tests shell out to `uv add --dev pytest` inside generated
         # projects that require >=3.12, and a job-level UV_PYTHON would
         # follow them in and fail the 3.10 leg.
         env:
