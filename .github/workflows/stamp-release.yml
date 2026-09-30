@@ -11,7 +11,9 @@ name: Stamp Release PR
 
 on:
   push:
-    branches: ["release-please--branches--**"]
+    # `*` not `**`: the branch is `release-please--branches--main`, no slash,
+    # and some GHA versions do not treat `**` as matching that name.
+    branches: ["release-please--branches--*"]
 
 concurrency:
   group: stamp-release-${{ github.ref }}
@@ -35,6 +37,10 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Custom-token checkouts of github.sha detach HEAD, and `git push`
+          # then has no branch to update. Pin the triggering ref and push
+          # back to it explicitly.
+          ref: ${{ github.ref }}
           token: ${{ steps.app-token.outputs.token }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -69,4 +75,4 @@ jobs:
           git commit -m "chore: stamp ${version} manifests and lockfiles"
           # release-please force-pushes this branch when more commits land.
           # A rejected push is noisy but harmless: that push retriggers this job.
-          git push
+          git push origin "HEAD:${{ github.ref }}"

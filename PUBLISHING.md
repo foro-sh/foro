@@ -41,7 +41,9 @@ merge landing moments later can't be picked up by mistake.
 
 Merge the Release PR with a merge commit or squash. Do not rebase-merge it:
 release-please identifies the release from the merged pull request, and a
-rebase drops that signal.
+rebase drops that signal. Wait until `Tests / Release versions match` is
+green — the first Tests run is against unstamped manifests and that job
+fails until `stamp-release.yml` rewrites them.
 
 Commitlint now runs as `Tests / Lint commit messages`. If branch protection
 still requires `Semantic Release / Lint commit messages`, update that check.

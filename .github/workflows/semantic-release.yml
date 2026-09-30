@@ -37,8 +37,10 @@ jobs:
     # is what GitHub documents it against. The job only talks to the API.
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      sha: ${{ steps.release.outputs.sha }}
+      # Manifest mode sometimes leaves the root `release_created` unset and
+      # only sets `releases_created`. Downstream jobs key off this output.
+      release_created: ${{ steps.release.outputs.releases_created }}
+      sha: ${{ steps.release.outputs.sha || steps.release.outputs['.--sha'] }}
     steps:
       - name: Mint a release token
         id: app-token
@@ -116,7 +118,11 @@ jobs:
   publish-python:
     name: Publish Python SDK
     needs: [release-please, tests, changed]
-    if: needs.release-please.outputs.release_created == 'true' && needs.changed.outputs.python == 'true'
+    if: >-
+      needs.release-please.result == 'success'
+      && needs.release-please.outputs.release_created == 'true'
+      && needs.tests.result == 'success'
+      && needs.changed.outputs.python == 'true'
     # GitHub-hosted deliberately, not a Blacksmith runner: pypa's publish
     # action is a container action with an amd64-only image, so an arm64
     # runner fails with `exec /app/twine-upload.sh: exec format error`.
