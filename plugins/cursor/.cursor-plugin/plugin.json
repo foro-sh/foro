@@ -1,0 +1,15 @@
+{
+  "name": "foro",
+  "version": "0.1.0",
+  "description": "Take a repo from empty folder to a deployed MCP server on foro.sh — bundles the foro.sh docs MCP plus skills for the init -> check -> push -> deploy path, with project config read from pyproject.toml or package.json.",
+  "author": {
+    "name": "foro.sh"
+  },
+  "homepage": "https://foro.sh",
+  "repository": "https://github.com/foro-sh/foro",
+  "license": "MIT",
+  "keywords": ["foro", "mcp", "deploy", "fastmcp", "uv"],
+  "logo": "assets/foro-mark.svg",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}
