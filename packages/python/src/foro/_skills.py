@@ -7,12 +7,15 @@ provider predates: the capability, `skills/list` and `skills/get`.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 IDENTIFIER = "io.modelcontextprotocol/skills"
+
+_FRONTMATTER = re.compile(r"\A\ufeff?---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
 # Manifests are computed once at startup from the files on disk, so a listing
 # stays valid for as long as the process does. Five minutes is the spec's own
@@ -50,7 +53,8 @@ def _entry(info) -> dict[str, Any]:
     # Re-parsed rather than taken from `info.frontmatter`, which FastMCP loads
     # with BaseLoader (every value a string). A host compares the entry
     # field-by-field against its own parse of SKILL.md, so types must survive.
-    frontmatter = yaml.safe_load(main.read_text(encoding="utf-8").split("---", 2)[1])
+    match = _FRONTMATTER.match(main.read_text(encoding="utf-8"))
+    frontmatter = yaml.safe_load(match[1]) if match else None
     if not isinstance(frontmatter, dict) or not frontmatter.get("description"):
         raise ValueError(f"foro.skills: {main} needs frontmatter with a name and a description")
     if frontmatter.get("name") != info.name:

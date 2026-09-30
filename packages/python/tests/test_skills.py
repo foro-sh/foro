@@ -98,3 +98,11 @@ def test_a_name_that_is_not_its_directory_fails_at_startup(tmp_path):
 def test_no_skills_fails_at_startup(tmp_path):
     with pytest.raises(FileNotFoundError):
         _server(tmp_path)
+
+
+def test_a_skill_without_frontmatter_fails_at_startup(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "SKILL.md").write_text("# a\n\nno frontmatter --- here\n")
+
+    with pytest.raises(ValueError, match="needs frontmatter"):
+        _server(tmp_path)
