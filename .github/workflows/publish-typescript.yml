@@ -5,7 +5,7 @@ name: Publish TypeScript SDK
 # semantic-release.yml - which leaves this file unable to authenticate a
 # publish when triggered directly. A workflow_dispatch here would present a
 # working button that always fails ENEEDAUTH. Manual republishes go through
-# `Semantic Release` with the publish_npm input instead.
+# `Release` with the publish_npm input instead.
 on:
   workflow_call:
     inputs:
