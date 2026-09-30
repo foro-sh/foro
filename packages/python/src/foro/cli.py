@@ -225,6 +225,14 @@ def _init_from_scratch(target: Path) -> None:
 
 
 def _init_existing(dir_path: Path) -> None:
+    if not (dir_path / "pyproject.toml").is_file():
+        typer.secho(
+            f"✗ no pyproject.toml in {dir_path.resolve()} - run `uv init` first to configure an "
+            "existing project, or `foro init <dir>` to scaffold a new one",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
     candidates = detect_entrypoint_candidates(dir_path)
     if len(candidates) > 1:
         typer.echo("Multiple candidate entrypoints found: " + ", ".join(candidates))
