@@ -14,15 +14,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def test_run_dev_succeeds_against_a_real_foro_run_server(tmp_path):
-    # Copied, not run in place: `uv run` rewrites an out-of-date uv.lock,
-    # which would otherwise mutate this tracked fixture as a side effect
-    # of the test passing (see foro-sh/foro#54).
     project = tmp_path / "minimal-fastmcp"
     shutil.copytree(FIXTURES / "minimal-fastmcp", project)
 
-    # The fixture points `foro` at this package via a relative path, which
-    # resolved to it from the fixture's original spot. Repoint it at the
-    # same directory from the copy's new one.
     packages_python = Path(__file__).parent.parent
     for name in ("pyproject.toml", "uv.lock"):
         target = project / name
