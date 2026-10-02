@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import socket
 import subprocess
 import time
@@ -12,8 +13,16 @@ from foro.dev import DevError, run_dev, start_server, stop
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def test_run_dev_succeeds_against_a_real_foro_run_server():
-    process, result = run_dev(FIXTURES / "minimal-fastmcp", timeout=20)
+def test_run_dev_succeeds_against_a_real_foro_run_server(tmp_path):
+    project = tmp_path / "minimal-fastmcp"
+    shutil.copytree(FIXTURES / "minimal-fastmcp", project)
+
+    packages_python = Path(__file__).parent.parent
+    for name in ("pyproject.toml", "uv.lock"):
+        target = project / name
+        target.write_text(target.read_text().replace("../../..", str(packages_python)))
+
+    process, result = run_dev(project, timeout=20)
     try:
         assert result.port == 8000
         assert "add" in result.tool_names
