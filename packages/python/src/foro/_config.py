@@ -12,13 +12,16 @@ import yaml
 DEFAULT_HOST = "foro.sh"
 ENV_TOKEN = "FORO_TOKEN"
 ENV_HOST = "FORO_HOST"
+ENV_WORKSPACE = "FORO_WORKSPACE"
 
 
 @dataclass
 class Credentials:
     token: str
     user: str | None = None
-    workspace: str | None = None
+    # The default workspace for commands that name none. The name is for display.
+    workspace_id: str | None = None
+    workspace_name: str | None = None
     from_env: bool = False
 
 
@@ -71,7 +74,8 @@ def load(host: str) -> Credentials | None:
     return Credentials(
         token=entry["token"],
         user=entry.get("user"),
-        workspace=entry.get("workspace"),
+        workspace_id=entry.get("workspace_id"),
+        workspace_name=entry.get("workspace_name"),
     )
 
 
@@ -80,7 +84,8 @@ def save(host: str, creds: Credentials) -> None:
     hosts[host] = {
         "token": creds.token,
         "user": creds.user,
-        "workspace": creds.workspace,
+        "workspace_id": creds.workspace_id,
+        "workspace_name": creds.workspace_name,
     }
     _write_all(hosts)
 

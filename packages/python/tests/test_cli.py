@@ -180,14 +180,13 @@ def test_auth_status_warns_when_config_file_is_insecure(logged_in, monkeypatch):
     from foro.auth import Identity
 
     logged_in.chmod(0o644)
-    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspaces=[]))
 
     result = runner.invoke(app, ["auth", "status"])
 
     assert result.exit_code == 0
     assert f"warning: {logged_in} is readable by other users - `chmod 600` it" in result.stdout
     assert "✓ Logged in as me" in result.stdout
-    assert "Workspace: acme" in result.stdout
 
 
 def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeypatch):
@@ -195,7 +194,7 @@ def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeyp
     import foro.cli as cli_module
     from foro.auth import Identity
 
-    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspaces=[]))
 
     result = runner.invoke(app, ["auth", "status"])
 
@@ -245,3 +244,120 @@ def test_detach_prints_the_mcp_endpoint(logged_in, tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.stdout
     assert "https://swift-harbor-a3f2.foro.sh/mcp" in result.stdout
+
+
+# --- Workspaces (foro-sh/foro#129): a token reaches every workspace; each
+# request names the one it acts in with X-Foro-Workspace.
+
+ACME = ("11111111-1111-1111-1111-111111111111", "acme")
+GLOBEX = ("22222222-2222-2222-2222-222222222222", "globex")
+
+
+@pytest.fixture
+def two_workspaces(monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import Identity, Workspace
+
+    identity = Identity(user="me", workspaces=[Workspace(*ACME), Workspace(*GLOBEX)])
+    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: identity)
+    return identity
+
+
+@pytest.fixture
+def sent_workspaces(monkeypatch):
+    """The X-Foro-Workspace each `list_projects` call would carry."""
+    import foro.cli as cli_module
+    from foro import _api
+
+    sent = []
+
+    def fake_list(host, token):
+        sent.append(_api.current_workspace())
+        return []
+
+    monkeypatch.setattr(cli_module, "list_projects", fake_list)
+    return sent
+
+
+def test_workspace_use_stores_the_default_by_name(logged_in, two_workspaces, sent_workspaces):
+    result = runner.invoke(app, ["workspace", "use", "GLOBEX"])
+
+    assert result.exit_code == 0, result.output
+    assert "now act in globex" in result.stdout
+    loaded = _config.load("127.0.0.1:1")
+    assert (loaded.workspace_id, loaded.workspace_name) == GLOBEX
+
+    runner.invoke(app, ["projects"])
+    assert sent_workspaces == [GLOBEX[0]]
+
+
+def test_workspace_use_rejects_an_unknown_workspace(logged_in, two_workspaces):
+    result = runner.invoke(app, ["workspace", "use", "initech"])
+
+    assert result.exit_code == 1
+    assert "no workspace 'initech' - yours: acme, globex" in result.stdout
+
+
+def test_workspace_list_marks_the_default(logged_in, two_workspaces):
+    runner.invoke(app, ["workspace", "use", ACME[1]])
+    result = runner.invoke(app, ["workspace", "list"])
+
+    assert result.exit_code == 0
+    assert f"* acme" in result.stdout
+    assert f"  globex" in result.stdout
+
+
+def test_the_flag_overrides_the_default_for_one_command(logged_in, two_workspaces, sent_workspaces):
+    runner.invoke(app, ["workspace", "use", "acme"])
+    runner.invoke(app, ["--workspace", "globex", "projects"])
+    runner.invoke(app, ["projects"])
+
+    assert sent_workspaces == [GLOBEX[0], ACME[0]]
+
+
+def test_the_env_var_selects_a_workspace(logged_in, two_workspaces, sent_workspaces, monkeypatch):
+    monkeypatch.setenv(_config.ENV_WORKSPACE, GLOBEX[0])
+    runner.invoke(app, ["projects"])
+
+    assert sent_workspaces == [GLOBEX[0]]
+
+
+def test_no_default_sends_no_workspace(logged_in, sent_workspaces):
+    runner.invoke(app, ["projects"])
+
+    assert sent_workspaces == [None]
+
+
+def test_a_linked_directory_acts_in_its_project_workspace(logged_in, sent_workspaces, tmp_path, monkeypatch):
+    import foro.cli as cli_module
+    from foro import _api, _project_link
+
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="s", workspace=GLOBEX[0]))
+    seen = []
+    monkeypatch.setattr(
+        cli_module, "get_project", lambda host, token, slug: seen.append(_api.current_workspace()) or {"url": "u"}
+    )
+    monkeypatch.setattr(cli_module.webbrowser, "open", lambda url: None)
+
+    runner.invoke(app, ["open", str(tmp_path)])
+
+    assert seen == [GLOBEX[0]]
+
+
+def test_login_asks_for_a_default_when_there_are_several(logged_out, two_workspaces, monkeypatch):
+    import foro.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_run_device_flow", lambda host: TOKEN)
+    result = runner.invoke(app, ["auth", "login"], input="2\n")
+
+    assert result.exit_code == 0, result.output
+    assert "(workspace: globex)" in result.stdout
+    assert _config.load("127.0.0.1:1").workspace_id == GLOBEX[0]
+
+
+def test_login_with_token_leaves_several_unchosen(logged_out, two_workspaces):
+    result = runner.invoke(app, ["auth", "login", "--with-token"], input=TOKEN + "\n")
+
+    assert result.exit_code == 0, result.output
+    assert "foro workspace use" in result.stdout
+    assert _config.load("127.0.0.1:1").workspace_id is None

@@ -82,7 +82,10 @@ def deploy(
             )
         step("creating a new project from this directory")
         project = _create_from_upload(repo_dir, host, token, step)
-        _project_link.save(repo_dir, ProjectLink(host=host, slug=project["slug"]))
+        _project_link.save(
+            repo_dir,
+            ProjectLink(host=host, slug=project["slug"], workspace=_api.current_workspace()),
+        )
         created = True
     else:
         project = _api.request("GET", f"/api/projects/{link.slug}", host=host, token=token)

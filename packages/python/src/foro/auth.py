@@ -32,9 +32,16 @@ class DeviceGrant:
 
 
 @dataclass
+class Workspace:
+    id: str
+    name: str
+
+
+@dataclass
 class Identity:
     user: str
-    workspace: str | None
+    # Every workspace the user belongs to - a token reaches all of them.
+    workspaces: list[Workspace]
 
 
 def _object(payload, what: str) -> dict:
@@ -131,9 +138,13 @@ def fetch_identity(host: str, token: str) -> Identity:
     user = payload.get("repo_username") or payload.get("email") or payload.get("id")
     if not isinstance(user, str) or not user:
         raise AuthError("/users/me identified no user - is this a foro.sh instance?")
-    workspace = payload.get("workspace")
-    name = workspace.get("name") if isinstance(workspace, dict) else None
-    return Identity(user=user, workspace=name if isinstance(name, str) else None)
+    rows = payload.get("workspaces")
+    workspaces = [
+        Workspace(id=row["id"], name=row["name"])
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and isinstance(row.get("id"), str) and isinstance(row.get("name"), str)
+    ]
+    return Identity(user=user, workspaces=workspaces)
 
 
 def revoke(host: str, token: str) -> None:

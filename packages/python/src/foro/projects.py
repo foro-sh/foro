@@ -38,5 +38,9 @@ def resolve_slug(repo_dir: Path, host: str, override: str | None) -> str:
 
 def link(repo_dir: Path, host: str, token: str, slug: str) -> dict:
     project = get_project(host, token, slug)
-    _project_link.save(repo_dir, ProjectLink(host=host, slug=slug))
+    # The workspace the lookup just succeeded in, so later commands in this
+    # directory act there whatever the default is.
+    _project_link.save(
+        repo_dir, ProjectLink(host=host, slug=slug, workspace=_api.current_workspace())
+    )
     return project
