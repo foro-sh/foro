@@ -13,6 +13,28 @@ from typing import Any
 TIMEOUT = 30.0
 UPLOAD_TIMEOUT = 300.0
 
+# A token reaches every workspace its user belongs to; each request names the
+# one it acts in. Set once per invocation by the CLI (cli._require_credentials).
+WORKSPACE_HEADER = "X-Foro-Workspace"
+_workspace: str | None = None
+
+
+def set_workspace(workspace_id: str | None) -> None:
+    global _workspace
+    _workspace = workspace_id
+
+
+def current_workspace() -> str | None:
+    return _workspace
+
+
+def _identify(req: urllib.request.Request, token: str | None) -> None:
+    req.add_header("User-Agent", f"foro-cli/{version('foro')}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    if _workspace:
+        req.add_header(WORKSPACE_HEADER, _workspace)
+
 
 class ApiError(Exception):
     def __init__(self, status: int, payload: Any, message: str) -> None:
@@ -46,9 +68,7 @@ def request(
 ) -> Any:
     req = urllib.request.Request(f"{base_url(host)}{path}", method=method)
     req.add_header("Accept", "application/json")
-    req.add_header("User-Agent", f"foro-cli/{version('foro')}")
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
+    _identify(req, token)
     if body is not None:
         req.add_header("Content-Type", "application/json")
         req.data = json.dumps(body).encode()
@@ -86,8 +106,7 @@ def post_multipart(
 
     req = urllib.request.Request(f"{base_url(host)}{path}", method=method, data=body)
     req.add_header("Accept", "application/json")
-    req.add_header("User-Agent", f"foro-cli/{version('foro')}")
-    req.add_header("Authorization", f"Bearer {token}")
+    _identify(req, token)
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
 
     try:
@@ -105,8 +124,7 @@ def stream_sse(path: str, *, host: str, token: str) -> Iterator[dict]:
     No read timeout: idle time between heartbeats is expected."""
     req = urllib.request.Request(f"{base_url(host)}{path}")
     req.add_header("Accept", "text/event-stream")
-    req.add_header("User-Agent", f"foro-cli/{version('foro')}")
-    req.add_header("Authorization", f"Bearer {token}")
+    _identify(req, token)
 
     try:
         response = urllib.request.urlopen(req)
@@ -138,7 +156,14 @@ def explain(err: ApiError, *, action: str) -> str:
         return "not logged in, or your token was revoked - run `foro auth login`"
     if err.status == 403:
         if message == "workspace_required" or reason == "workspace_required":
-            return "finish onboarding in the dashboard first - your account has no workspace yet"
+            return (
+                "pick a workspace first - run `foro workspace use <name>` or pass "
+                "--workspace (with none at all, finish onboarding in the dashboard)"
+            )
+        if reason == "insufficient_scope":
+            return f"this token lacks the {err.payload.get('scope')} scope"
+        if reason == "session_only":
+            return f"{action} is only available from the dashboard"
         if reason == "seat_read_only":
             return "your seat is read-only on this workspace's plan"
         if reason == "repo_provider_not_connected":

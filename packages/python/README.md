@@ -86,9 +86,12 @@ Press Enter to open foro.sh in your browser...
 A browser approves the code, the CLI polls until you do — the same device flow
 `gh auth login` uses, so it works over SSH where a loopback redirect wouldn't.
 
-- **The token is workspace-scoped**, picked when you approve it. Access to a
-  second workspace means logging in again for a second token; there is no
-  workspace-switch command.
+- **One login reaches every workspace you belong to.** Each command acts in
+  one: `--workspace <name>` (or `$FORO_WORKSPACE`) for a single command, else
+  the workspace of the project the directory is linked to, else the default
+  you pick with `foro workspace use <name>`. Login picks it for you when you
+  have one workspace and asks when you have several; `foro workspace list`
+  shows them all.
 - **`foro auth status`** validates against the API rather than reporting that a
   file exists, so a revoked token shows as broken. It exits 1 when you aren't
   authenticated, which is what a script should branch on.
@@ -100,12 +103,13 @@ A browser approves the code, the CLI polls until you do — the same device flow
 
 Credentials live in `~/.config/foro/hosts.yml` (`$XDG_CONFIG_HOME` is honoured;
 `%APPDATA%\foro` on Windows) at mode `0600`, keyed by host. Two environment
-variables override it:
+variables override it, and one picks the workspace:
 
 | Variable | Effect |
 | --- | --- |
 | `FORO_TOKEN` | Use this token instead of the stored one, and never write it to disk — the `GH_TOKEN` convention. `foro auth status` says when it's in play |
 | `FORO_HOST` | Point the CLI at another instance (`localhost:3001` for a native dev stack). Defaults to `foro.sh` |
+| `FORO_WORKSPACE` | Act in this workspace (name or id), like `--workspace` |
 
 For CI, skip the browser entirely:
 
@@ -128,9 +132,12 @@ Press Enter to open foro.sh in your browser...
 A browser approves the code, the CLI polls until you do — the same device flow
 `gh auth login` uses, so it works over SSH where a loopback redirect wouldn't.
 
-- **The token is workspace-scoped**, picked when you approve it. Access to a
-  second workspace means logging in again for a second token; there is no
-  workspace-switch command.
+- **One login reaches every workspace you belong to.** Each command acts in
+  one: `--workspace <name>` (or `$FORO_WORKSPACE`) for a single command, else
+  the workspace of the project the directory is linked to, else the default
+  you pick with `foro workspace use <name>`. Login picks it for you when you
+  have one workspace and asks when you have several; `foro workspace list`
+  shows them all.
 - **`foro auth status`** validates against the API rather than reporting that a
   file exists, so a revoked token shows as broken. It exits 1 when you aren't
   authenticated, which is what a script should branch on.
@@ -142,12 +149,13 @@ A browser approves the code, the CLI polls until you do — the same device flow
 
 Credentials live in `~/.config/foro/hosts.yml` (`$XDG_CONFIG_HOME` is honoured;
 `%APPDATA%\foro` on Windows) at mode `0600`, keyed by host. Two environment
-variables override it:
+variables override it, and one picks the workspace:
 
 | Variable | Effect |
 | --- | --- |
 | `FORO_TOKEN` | Use this token instead of the stored one, and never write it to disk — the `GH_TOKEN` convention. `foro auth status` says when it's in play |
 | `FORO_HOST` | Point the CLI at another instance (`localhost:3001` for a native dev stack). Defaults to `foro.sh` |
+| `FORO_WORKSPACE` | Act in this workspace (name or id), like `--workspace` |
 
 For CI, skip the browser entirely:
 
@@ -199,7 +207,7 @@ slug would make a fork deploy into someone else's project.
 $ foro logs -f                   # tail the running server
 $ foro logs --build              # raw docker output from the last deploy
 $ foro logs --deploy --json      # the deploy narrative, one JSON object per line
-$ foro projects                  # everything in this token's workspace
+$ foro projects                  # everything in the workspace you act in
 $ foro open                      # the deployed URL, in a browser
 ```
 

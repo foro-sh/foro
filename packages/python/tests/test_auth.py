@@ -171,7 +171,7 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
                 "id": "u-1",
                 "repo_username": None,
                 "email": "dev@example.com",
-                "workspace": {"name": "acme"},
+                "workspaces": [{"id": "w-1", "name": "acme"}, {"id": "w-2", "name": "globex"}],
             },
         )
     ]
@@ -179,7 +179,10 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
     identity = auth.fetch_identity(host, "foro_pat_abc")
 
     assert identity.user == "dev@example.com"
-    assert identity.workspace == "acme"
+    assert identity.workspaces == [
+        auth.Workspace(id="w-1", name="acme"),
+        auth.Workspace(id="w-2", name="globex"),
+    ]
 
 
 def test_revoke_deletes_the_row_matching_the_token_prefix(server):
@@ -240,12 +243,15 @@ def test_only_loopback_hosts_are_addressed_over_plain_http():
 
 
 def test_config_round_trip_and_permissions():
-    creds = _config.Credentials(token="foro_pat_abc", user="dev", workspace="acme")
+    creds = _config.Credentials(
+        token="foro_pat_abc", user="dev", workspace_id="w-1", workspace_name="acme"
+    )
     _config.save("foro.sh", creds)
 
     loaded = _config.load("foro.sh")
     assert loaded.token == "foro_pat_abc"
-    assert loaded.workspace == "acme"
+    assert loaded.workspace_id == "w-1"
+    assert loaded.workspace_name == "acme"
     assert not loaded.from_env
     assert stat.S_IMODE(_config.config_path().stat().st_mode) == 0o600
     assert not _config.has_insecure_permissions()
@@ -365,11 +371,13 @@ def test_a_users_me_that_identifies_nobody_is_an_error(server):
         auth.fetch_identity(host, "foro_pat_abc")
 
 
-def test_a_non_dict_workspace_does_not_crash_identity(server):
+def test_malformed_workspaces_do_not_crash_identity(server):
     host, handler = server
-    handler.script = [(200, {"email": "dev@example.com", "workspace": "acme"})]
+    handler.script = [
+        (200, {"email": "dev@example.com", "workspaces": ["acme", {"id": "w-1"}, {"id": "w-2", "name": "ok"}]})
+    ]
 
-    assert auth.fetch_identity(host, "foro_pat_abc").workspace is None
+    assert auth.fetch_identity(host, "foro_pat_abc").workspaces == [auth.Workspace(id="w-2", name="ok")]
 
 
 def test_revoke_reports_a_token_list_that_is_not_a_list(server):

@@ -11,7 +11,10 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Optional
 
+import click
 import typer
+
+from dataclasses import replace
 
 from foro import _api, _config, _project_link, projects
 from foro._api import ApiError
@@ -35,11 +38,13 @@ from foro.auth import (
     TOKEN_PREFIX,
     TOKEN_RE,
     AuthError,
+    Workspace,
     fetch_identity,
     poll_for_token,
     revoke,
     start_device_flow,
 )
+from foro.workspaces import WorkspaceError, select
 from foro.check import run_check
 from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
 from foro.deploy import deploy as deploy_project
@@ -74,6 +79,10 @@ def _version_callback(show: bool) -> None:
         raise typer.Exit()
 
 
+# `--workspace` / FORO_WORKSPACE, read by _require_credentials.
+_workspace_selector: str | None = None
+
+
 @app.callback()
 def main(
     show_version: bool = typer.Option(
@@ -83,8 +92,18 @@ def main(
         is_eager=True,
         help="Show the foro CLI version and exit.",
     ),
+    workspace: Optional[str] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        envvar=_config.ENV_WORKSPACE,
+        help="Workspace to act in, by name or id. Default: the directory's linked "
+        "project, then `foro workspace use`.",
+    ),
 ) -> None:
     """foro - the foro.sh Python SDK and CLI."""
+    global _workspace_selector
+    _workspace_selector = workspace
 
 
 @app.command()
@@ -353,7 +372,11 @@ auth_app = typer.Typer(no_args_is_help=True, help="Sign in to foro.sh so the CLI
 app.add_typer(auth_app, name="auth")
 
 
-def _require_credentials() -> tuple[str, _config.Credentials]:
+def _require_credentials(path: Path | None = None) -> tuple[str, _config.Credentials]:
+    """Load the login and pick the workspace every request names: `--workspace`,
+    then the linked project's (when `path` is a linked directory), then the
+    stored default. None at all lets a single-workspace user through and gets
+    everyone else a `workspace_required` that says what to do."""
     host = _config.resolve_host()
     creds = _config.load(host)
     if creds is None:
@@ -364,7 +387,51 @@ def _require_credentials() -> tuple[str, _config.Credentials]:
             f"warning: {_config.config_path()} is readable by other users - `chmod 600` it",
             fg=typer.colors.YELLOW,
         )
+    _api.set_workspace(_choose_workspace(host, creds, path))
     return host, creds
+
+
+def _select_workspace(host: str, token: str, selector: str) -> Workspace:
+    try:
+        return select(selector, fetch_identity(host, token).workspaces)
+    except ApiError as err:
+        raise _fail(err, "list your workspaces") from None
+    except (AuthError, WorkspaceError) as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+
+
+def _choose_workspace(host: str, creds: _config.Credentials, path: Path | None) -> str | None:
+    if _workspace_selector:
+        return _select_workspace(host, creds.token, _workspace_selector).id
+    if path is not None:
+        link = _project_link.load(path, host)
+        if link and link.workspace:
+            return link.workspace
+    return creds.workspace_id
+
+
+def _default_workspace(workspaces: list[Workspace], *, interactive: bool) -> Workspace | None:
+    """The workspace a fresh login defaults to: the only one, or the user's pick.
+    Without a prompt to ask on, several stay unchosen until `foro workspace use`."""
+    if _workspace_selector:
+        try:
+            return select(_workspace_selector, workspaces)
+        except WorkspaceError as err:
+            typer.secho(f"✗ {err}", fg=typer.colors.RED)
+            raise typer.Exit(code=1) from None
+    if len(workspaces) <= 1:
+        return workspaces[0] if workspaces else None
+    if not interactive:
+        typer.echo("You belong to several workspaces - pick one with `foro workspace use <name>`.")
+        return None
+    typer.echo("You belong to several workspaces:")
+    for index, workspace in enumerate(workspaces, start=1):
+        typer.echo(f"  {index}. {workspace.name}")
+    choice = typer.prompt(
+        "Default workspace", type=click.IntRange(1, len(workspaces)), default=1
+    )
+    return workspaces[choice - 1]
 
 
 @auth_app.command("login")
@@ -405,11 +472,17 @@ def auth_login(
         typer.secho(f"✗ the token was rejected by {host}: {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
 
+    default = _default_workspace(identity.workspaces, interactive=not with_token)
     _config.save(
         host,
-        _config.Credentials(token=token, user=identity.user, workspace=identity.workspace),
+        _config.Credentials(
+            token=token,
+            user=identity.user,
+            workspace_id=default.id if default else None,
+            workspace_name=default.name if default else None,
+        ),
     )
-    workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
+    workspace = f" (workspace: {default.name})" if default else ""
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
 
 
@@ -494,8 +567,10 @@ def auth_status() -> None:
     where = f"${_config.ENV_TOKEN}" if creds.from_env else str(_config.config_path())
     typer.echo(host)
     typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
-    if identity.workspace:
-        typer.echo(f"    Workspace: {identity.workspace}")
+    if creds.workspace_name:
+        typer.echo(f"    Workspace: {creds.workspace_name}")
+    elif len(identity.workspaces) > 1:
+        typer.echo("    Workspace: none chosen - run `foro workspace use <name>`")
     typer.echo(f"    Token: {creds.token[: len(TOKEN_PREFIX) + 8]}… ({where})")
 
 
@@ -540,7 +615,7 @@ def _fail(err: ApiError, action: str) -> typer.Exit:
 
 
 def _resolve(path: Path, project: str | None) -> tuple[str, str, str]:
-    host, creds = _require_credentials()
+    host, creds = _require_credentials(path)
     try:
         return host, creds.token, projects.resolve_slug(path, host, project)
     except ProjectError as err:
@@ -562,7 +637,7 @@ def deploy(
         typer.secho("✗ --upload and --repo are mutually exclusive", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    host, creds = _require_credentials()
+    host, creds = _require_credentials(path)
 
     if not skip_check and not repo:
         result = run_check(path)
@@ -716,7 +791,7 @@ app.add_typer(projects_app, name="projects")
 
 @projects_app.callback(invoke_without_command=True)
 def projects_default(ctx: typer.Context) -> None:
-    """List every project in the token's workspace."""
+    """List every project in the workspace you act in."""
     if ctx.invoked_subcommand is not None:
         return
     host, creds = _require_credentials()
@@ -754,6 +829,48 @@ def projects_show(
     if history:
         last = history[0]
         typer.echo(f"  Last deploy: {last['status']} at {last['created_at']} ({last['id'][:8]})")
+
+
+workspace_app = typer.Typer(
+    no_args_is_help=True,
+    help="Choose the workspace commands act in. Your login reaches all of them.",
+)
+app.add_typer(workspace_app, name="workspace")
+
+
+@workspace_app.command("list")
+def workspace_list() -> None:
+    """List your workspaces; `*` marks the default."""
+    host, creds = _require_credentials()
+    try:
+        workspaces = fetch_identity(host, creds.token).workspaces
+    except (ApiError, AuthError) as err:
+        typer.secho(f"✗ could not list your workspaces: {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    if not workspaces:
+        typer.echo("no workspaces yet - finish onboarding in the dashboard")
+        return
+    for workspace in workspaces:
+        marker = "*" if workspace.id == creds.workspace_id else " "
+        typer.echo(f"{marker} {workspace.name:<28} {workspace.id}")
+
+
+@workspace_app.command("use")
+def workspace_use(
+    selector: str = typer.Argument(..., help="Workspace name or id."),
+) -> None:
+    """Make a workspace the default for commands that name none."""
+    host, creds = _require_credentials()
+    if creds.from_env:
+        typer.secho(
+            f"✗ the token comes from ${_config.ENV_TOKEN}, so there is no stored login "
+            f"to set a default on - set ${_config.ENV_WORKSPACE} instead",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    workspace = _select_workspace(host, creds.token, selector)
+    _config.save(host, replace(creds, workspace_id=workspace.id, workspace_name=workspace.name))
+    typer.secho(f"✓ commands now act in {workspace.name}", fg=typer.colors.GREEN)
 
 
 @app.command()
