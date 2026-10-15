@@ -13,7 +13,7 @@ from typing import Optional
 
 import typer
 
-from foro import _api, _config, _project_link, projects
+from foro import _api, _config, _project_link, auth, projects
 from foro._api import ApiError
 from foro._archive import ArchiveError
 from foro._manifest import (
@@ -36,6 +36,7 @@ from foro.auth import (
     TOKEN_RE,
     AuthError,
     fetch_identity,
+    list_workspaces,
     poll_for_token,
     revoke,
     start_device_flow,
@@ -74,6 +75,9 @@ def _version_callback(show: bool) -> None:
         raise typer.Exit()
 
 
+_workspace_override: str | None = None
+
+
 @app.callback()
 def main(
     show_version: bool = typer.Option(
@@ -83,8 +87,15 @@ def main(
         is_eager=True,
         help="Show the foro CLI version and exit.",
     ),
+    workspace: Optional[str] = typer.Option(
+        None,
+        "--workspace",
+        help="Workspace (name or id) to act on for this command, overriding the default.",
+    ),
 ) -> None:
     """foro - the foro.sh Python SDK and CLI."""
+    global _workspace_override
+    _workspace_override = workspace
 
 
 @app.command()
@@ -367,6 +378,54 @@ def _require_credentials() -> tuple[str, _config.Credentials]:
     return host, creds
 
 
+def _resolve_workspace_ref(host: str, token: str, query: str) -> auth.WorkspaceRef:
+    try:
+        workspaces = list_workspaces(host, token)
+    except ApiError as err:
+        raise _fail(err, "list workspaces") from None
+
+    matches = [w for w in workspaces if query in (w.id, w.name)]
+    if not matches:
+        typer.secho(f"✗ no workspace matches {query!r} - run `foro workspace list`", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if len(matches) > 1:
+        typer.secho(f"✗ more than one workspace matches {query!r} - use its id instead", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    return matches[0]
+
+
+def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None = None) -> str | None:
+    if _workspace_override:
+        return _resolve_workspace_ref(host, creds.token, _workspace_override).id
+    if path is not None:
+        link = _project_link.load(path, host)
+        if link and link.workspace:
+            return link.workspace
+    return creds.workspace
+
+
+def _select_default_workspace(identity: auth.Identity, *, interactive: bool) -> auth.WorkspaceRef | None:
+    if identity.workspace is not None:
+        return identity.workspace
+    if len(identity.workspaces) == 1:
+        return identity.workspaces[0]
+    if not interactive or not identity.workspaces:
+        return None
+
+    typer.echo("You belong to more than one workspace:")
+    for i, ref in enumerate(identity.workspaces, start=1):
+        typer.echo(f"  {i}. {ref.name}")
+    choice = typer.prompt("Pick a default workspace", type=int, default=1)
+    index = choice - 1
+    if not (0 <= index < len(identity.workspaces)):
+        typer.secho(
+            "✗ invalid choice - no default workspace set; run `foro workspace use` later",
+            fg=typer.colors.YELLOW,
+        )
+        return None
+    return identity.workspaces[index]
+
+
 @auth_app.command("login")
 def auth_login(
     with_token: bool = typer.Option(
@@ -405,11 +464,16 @@ def auth_login(
         typer.secho(f"✗ the token was rejected by {host}: {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
 
+    default_workspace = _select_default_workspace(identity, interactive=not with_token)
     _config.save(
         host,
-        _config.Credentials(token=token, user=identity.user, workspace=identity.workspace),
+        _config.Credentials(
+            token=token,
+            user=identity.user,
+            workspace=default_workspace.id if default_workspace else None,
+        ),
     )
-    workspace = f" (workspace: {identity.workspace})" if identity.workspace else ""
+    workspace = f" (workspace: {default_workspace.name})" if default_workspace else ""
     typer.secho(f"✓ Logged in as {identity.user}{workspace}", fg=typer.colors.GREEN)
 
 
@@ -494,8 +558,10 @@ def auth_status() -> None:
     where = f"${_config.ENV_TOKEN}" if creds.from_env else str(_config.config_path())
     typer.echo(host)
     typer.secho(f"  ✓ Logged in as {identity.user}", fg=typer.colors.GREEN)
-    if identity.workspace:
-        typer.echo(f"    Workspace: {identity.workspace}")
+    if creds.workspace:
+        default_ref = next((w for w in identity.workspaces if w.id == creds.workspace), None)
+        name = default_ref.name if default_ref else f"{creds.workspace} (not found - run `foro workspace use`)"
+        typer.echo(f"    Workspace: {name}")
     typer.echo(f"    Token: {creds.token[: len(TOKEN_PREFIX) + 8]}… ({where})")
 
 
@@ -532,20 +598,75 @@ def auth_token() -> None:
     typer.echo(creds.token)
 
 
+workspace_app = typer.Typer(no_args_is_help=True, help="See and switch which workspace the CLI acts on.")
+app.add_typer(workspace_app, name="workspace")
 
 
-def _fail(err: ApiError, action: str) -> typer.Exit:
-    typer.secho(f"✗ {_api.explain(err, action=action)}", fg=typer.colors.RED)
+@workspace_app.command("list")
+def workspace_list() -> None:
+    """List every workspace you belong to; `*` marks the current default."""
+    host, creds = _require_credentials()
+    try:
+        workspaces = list_workspaces(host, creds.token)
+    except ApiError as err:
+        raise _fail(err, "list workspaces") from None
+
+    if not workspaces:
+        typer.echo("no workspaces yet - finish onboarding in the dashboard")
+        return
+    for workspace in workspaces:
+        marker = "*" if workspace.id == creds.workspace else " "
+        typer.echo(f"{marker} {workspace.name:<28} {workspace.id}")
+
+
+@workspace_app.command("use")
+def workspace_use(
+    query: str = typer.Argument(..., help="Workspace name or id to make the default."),
+) -> None:
+    """Make a workspace the CLI's default for commands with no --workspace."""
+    host, creds = _require_credentials()
+    if creds.from_env:
+        typer.secho(
+            f"✗ the token comes from ${_config.ENV_TOKEN}, so there is no stored login "
+            "to set a default workspace on - pass --workspace instead",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    ref = _resolve_workspace_ref(host, creds.token, query)
+    _config.save(host, _config.Credentials(token=creds.token, user=creds.user, workspace=ref.id))
+    typer.secho(f"✓ default workspace set to {ref.name}", fg=typer.colors.GREEN)
+
+
+def _explain_workspace_required(host: str, token: str) -> str:
+    try:
+        workspaces = list_workspaces(host, token)
+    except (ApiError, AuthError):
+        workspaces = []
+    if len(workspaces) > 1:
+        return (
+            "your account belongs to more than one workspace - "
+            "run `foro workspace use` to pick a default, or pass --workspace"
+        )
+    return "finish onboarding in the dashboard first - your account has no workspace yet"
+
+
+def _fail(err: ApiError, action: str, host: str | None = None, token: str | None = None) -> typer.Exit:
+    message = _api.explain(err, action=action)
+    if err.code == "workspace_required" and host and token:
+        message = _explain_workspace_required(host, token)
+    typer.secho(f"✗ {message}", fg=typer.colors.RED)
     return typer.Exit(code=1)
 
 
-def _resolve(path: Path, project: str | None) -> tuple[str, str, str]:
+def _resolve(path: Path, project: str | None) -> tuple[str, str, str, str | None]:
     host, creds = _require_credentials()
     try:
-        return host, creds.token, projects.resolve_slug(path, host, project)
+        slug = projects.resolve_slug(path, host, project)
     except ProjectError as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
+    return host, creds.token, slug, _resolve_workspace(host, creds, path)
 
 
 @app.command()
@@ -563,6 +684,7 @@ def deploy(
         raise typer.Exit(code=1)
 
     host, creds = _require_credentials()
+    workspace = _resolve_workspace(host, creds, path)
 
     if not skip_check and not repo:
         result = run_check(path)
@@ -578,13 +700,14 @@ def deploy(
             slug=project,
             force_upload=upload,
             force_repo=repo,
+            workspace=workspace,
             on_step=lambda message: typer.echo(f"- {message}"),
         )
     except (DeployError, ArchiveError) as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
     except ApiError as err:
-        raise _fail(err, "deploy") from None
+        raise _fail(err, "deploy", host, creds.token) from None
 
     if started.created:
         typer.echo(f"- created {started.slug}")
@@ -595,7 +718,7 @@ def deploy(
         typer.echo(f"  {normalize_url(started.url)}")
         return
 
-    _stream_deploy(host, creds.token, started)
+    _stream_deploy(host, creds.token, started, workspace)
 
 
 def _offer_gitignore(repo_dir: Path) -> None:
@@ -608,12 +731,12 @@ def _offer_gitignore(repo_dir: Path) -> None:
         _project_link.add_to_gitignore(repo_dir)
 
 
-def _stream_deploy(host: str, token: str, started) -> None:
+def _stream_deploy(host: str, token: str, started, workspace: str | None = None) -> None:
     build_lines: list[str] = []
 
     def pump_build() -> None:
         try:
-            for entry in stream_build(host, token, started.slug, started.deployment_id):
+            for entry in stream_build(host, token, started.slug, started.deployment_id, workspace=workspace):
                 line = entry.get("line", "")
                 build_lines.append(line)
                 typer.secho(f"  │ {line}", dim=True)
@@ -624,7 +747,7 @@ def _stream_deploy(host: str, token: str, started) -> None:
     pump.start()
 
     try:
-        for entry in stream_deploy(host, token, started.slug, started.deployment_id):
+        for entry in stream_deploy(host, token, started.slug, started.deployment_id, workspace=workspace):
             typer.echo(entry.get("line", ""))
     except KeyboardInterrupt:
         typer.echo("")
@@ -634,14 +757,14 @@ def _stream_deploy(host: str, token: str, started) -> None:
         )
         raise typer.Exit(code=0) from None
     except ApiError as err:
-        raise _fail(err, "stream the deploy") from None
+        raise _fail(err, "stream the deploy", host, token) from None
 
     pump.join(timeout=2)
 
     try:
-        final = get_deployment(host, token, started.slug, started.deployment_id)
+        final = get_deployment(host, token, started.slug, started.deployment_id, workspace=workspace)
     except ApiError as err:
-        raise _fail(err, "read the deployment") from None
+        raise _fail(err, "read the deployment", host, token) from None
 
     if final["status"] == "live":
         typer.secho(f"✓ live at {normalize_url(started.url)}", fg=typer.colors.GREEN)
@@ -672,31 +795,31 @@ def logs(
         typer.secho("✗ --deploy and --build are mutually exclusive", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    host, token, slug = _resolve(path, project)
+    host, token, slug, workspace = _resolve(path, project)
 
     def emit(entry: dict) -> None:
         typer.echo(json.dumps(entry) if as_json else entry.get("line", ""))
 
     try:
         if deploy_log or build_log:
-            deployment_id = deployment or latest_deployment_id(host, token, slug)
+            deployment_id = deployment or latest_deployment_id(host, token, slug, workspace=workspace)
             if not deployment_id:
                 typer.secho(f"✗ {slug} has no deployments yet", fg=typer.colors.RED)
                 raise typer.Exit(code=1)
             kind = "build" if build_log else "deploy"
-            for entry in read_deployment(host, token, slug, deployment_id, kind):
+            for entry in read_deployment(host, token, slug, deployment_id, kind, workspace=workspace):
                 emit(entry)
             return
 
         if follow:
             try:
-                for entry in stream_runtime(host, token, slug):
+                for entry in stream_runtime(host, token, slug, workspace=workspace):
                     emit(entry)
             except KeyboardInterrupt:
                 typer.echo("")
             return
 
-        lines = read_runtime(host, token, slug)
+        lines = read_runtime(host, token, slug, workspace=workspace)
         if not lines:
             typer.echo(
                 "no stored logs - retention is plan-gated (24h on Free), so this is "
@@ -706,7 +829,7 @@ def logs(
         for entry in lines:
             emit(entry)
     except ApiError as err:
-        raise _fail(err, "read logs") from None
+        raise _fail(err, "read logs", host, token) from None
 
 
 # Bare `foro projects` lists; do not set no_args_is_help.
@@ -720,10 +843,11 @@ def projects_default(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is not None:
         return
     host, creds = _require_credentials()
+    workspace = _resolve_workspace(host, creds)
     try:
-        rows = list_projects(host, creds.token)
+        rows = list_projects(host, creds.token, workspace=workspace)
     except ApiError as err:
-        raise _fail(err, "list projects") from None
+        raise _fail(err, "list projects", host, creds.token) from None
 
     if not rows:
         typer.echo("no projects yet - `foro deploy` creates one from this directory")
@@ -739,12 +863,12 @@ def projects_show(
     project: Optional[str] = typer.Option(None, "--project", help="Show this slug."),
 ) -> None:
     """Show one project, defaulting to the one this directory is linked to."""
-    host, token, slug = _resolve(path, project)
+    host, token, slug, workspace = _resolve(path, project)
     try:
-        row = get_project(host, token, slug)
-        history = list_deployments(host, token, slug)
+        row = get_project(host, token, slug, workspace=workspace)
+        history = list_deployments(host, token, slug, workspace=workspace)
     except ApiError as err:
-        raise _fail(err, "read the project") from None
+        raise _fail(err, "read the project", host, token) from None
 
     typer.echo(row["slug"])
     typer.echo(f"  Name:    {row.get('name') or '(none)'}")
@@ -763,10 +887,11 @@ def link(
 ) -> None:
     """Point this directory at a project created in the dashboard."""
     host, creds = _require_credentials()
+    workspace = _resolve_workspace(host, creds, path)
     try:
-        row = link_project(path, host, creds.token, slug)
+        row = link_project(path, host, creds.token, slug, workspace=workspace)
     except ApiError as err:
-        raise _fail(err, "link the project") from None
+        raise _fail(err, "link the project", host, creds.token) from None
 
     typer.secho(f"✓ linked to {row['slug']} ({row['url']})", fg=typer.colors.GREEN)
     _offer_gitignore(path)
@@ -789,11 +914,11 @@ def open_project(
     project: Optional[str] = typer.Option(None, "--project", help="Open this slug."),
 ) -> None:
     """Open the deployed URL in a browser."""
-    host, token, slug = _resolve(path, project)
+    host, token, slug, workspace = _resolve(path, project)
     try:
-        row = get_project(host, token, slug)
+        row = get_project(host, token, slug, workspace=workspace)
     except ApiError as err:
-        raise _fail(err, "read the project") from None
+        raise _fail(err, "read the project", host, token) from None
 
     typer.echo(row["url"])
     webbrowser.open(row["url"])

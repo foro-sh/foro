@@ -65,6 +65,7 @@ def deploy(
     slug: str | None = None,
     force_upload: bool = False,
     force_repo: bool = False,
+    workspace: str | None = None,
     on_step=None,
 ) -> Started:
     def step(message: str) -> None:
@@ -81,11 +82,13 @@ def deploy(
                 "this directory isn't linked to one"
             )
         step("creating a new project from this directory")
-        project = _create_from_upload(repo_dir, host, token, step)
-        _project_link.save(repo_dir, ProjectLink(host=host, slug=project["slug"]))
+        project = _create_from_upload(repo_dir, host, token, step, workspace=workspace)
+        _project_link.save(repo_dir, ProjectLink(host=host, slug=project["slug"], workspace=workspace))
         created = True
     else:
-        project = _api.request("GET", f"/api/projects/{link.slug}", host=host, token=token)
+        project = _api.request(
+            "GET", f"/api/projects/{link.slug}", host=host, token=token, workspace=workspace
+        )
         use_upload = force_upload or (project["source"] == "upload" and not force_repo)
         if use_upload:
             if project["source"] != "upload":
@@ -93,14 +96,14 @@ def deploy(
                     f"{project['slug']} deploys from a repo, so there is no archive to replace"
                 )
             step("uploading the working tree")
-            _replace_upload(repo_dir, host, token, project["slug"], step)
+            _replace_upload(repo_dir, host, token, project["slug"], step, workspace=workspace)
         else:
             warning = local_changes_warning(repo_dir)
             if warning:
                 step(f"warning: {warning}")
 
     started = _api.request(
-        "POST", f"/api/projects/{project['slug']}/deploy", host=host, token=token
+        "POST", f"/api/projects/{project['slug']}/deploy", host=host, token=token, workspace=workspace
     )
     return Started(
         slug=project["slug"],
@@ -110,7 +113,7 @@ def deploy(
     )
 
 
-def _create_from_upload(repo_dir: Path, host: str, token: str, step) -> dict:
+def _create_from_upload(repo_dir: Path, host: str, token: str, step, *, workspace: str | None = None) -> dict:
     archive = _build(repo_dir, step)
     return _api.post_multipart(
         "/api/projects/upload",
@@ -118,10 +121,13 @@ def _create_from_upload(repo_dir: Path, host: str, token: str, step) -> dict:
         token=token,
         filename="project.zip",
         content=archive.content,
+        workspace=workspace,
     )
 
 
-def _replace_upload(repo_dir: Path, host: str, token: str, slug: str, step) -> None:
+def _replace_upload(
+    repo_dir: Path, host: str, token: str, slug: str, step, *, workspace: str | None = None
+) -> None:
     archive = _build(repo_dir, step)
     _api.post_multipart(
         f"/api/projects/{slug}/upload",
@@ -130,6 +136,7 @@ def _replace_upload(repo_dir: Path, host: str, token: str, slug: str, step) -> N
         token=token,
         filename="project.zip",
         content=archive.content,
+        workspace=workspace,
     )
 
 
@@ -139,23 +146,31 @@ def _build(repo_dir: Path, step) -> _archive.Archive:
     return archive
 
 
-def stream_deploy(host: str, token: str, slug: str, deployment_id: str):
+def stream_deploy(host: str, token: str, slug: str, deployment_id: str, *, workspace: str | None = None):
     return _api.stream_sse(
         f"/api/projects/{slug}/deployments/{deployment_id}/deploy/stream",
         host=host,
         token=token,
+        workspace=workspace,
     )
 
 
-def stream_build(host: str, token: str, slug: str, deployment_id: str):
+def stream_build(host: str, token: str, slug: str, deployment_id: str, *, workspace: str | None = None):
     return _api.stream_sse(
         f"/api/projects/{slug}/deployments/{deployment_id}/build/stream",
         host=host,
         token=token,
+        workspace=workspace,
     )
 
 
-def get_deployment(host: str, token: str, slug: str, deployment_id: str) -> dict:
+def get_deployment(
+    host: str, token: str, slug: str, deployment_id: str, *, workspace: str | None = None
+) -> dict:
     return _api.request(
-        "GET", f"/api/projects/{slug}/deployments/{deployment_id}", host=host, token=token
+        "GET",
+        f"/api/projects/{slug}/deployments/{deployment_id}",
+        host=host,
+        token=token,
+        workspace=workspace,
     )

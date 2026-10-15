@@ -12,6 +12,7 @@ from typing import Any
 
 TIMEOUT = 30.0
 UPLOAD_TIMEOUT = 300.0
+WORKSPACE_HEADER = "X-Foro-Workspace"
 
 
 class ApiError(Exception):
@@ -43,12 +44,15 @@ def request(
     token: str | None = None,
     body: dict | None = None,
     timeout: float = TIMEOUT,
+    workspace: str | None = None,
 ) -> Any:
     req = urllib.request.Request(f"{base_url(host)}{path}", method=method)
     req.add_header("Accept", "application/json")
     req.add_header("User-Agent", f"foro-cli/{version('foro')}")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    if workspace:
+        req.add_header(WORKSPACE_HEADER, workspace)
     if body is not None:
         req.add_header("Content-Type", "application/json")
         req.data = json.dumps(body).encode()
@@ -72,6 +76,7 @@ def post_multipart(
     filename: str,
     content: bytes,
     field: str = "file",
+    workspace: str | None = None,
 ) -> Any:
     boundary = f"----foro{secrets.token_hex(16)}"
     body = b"".join(
@@ -88,6 +93,8 @@ def post_multipart(
     req.add_header("Accept", "application/json")
     req.add_header("User-Agent", f"foro-cli/{version('foro')}")
     req.add_header("Authorization", f"Bearer {token}")
+    if workspace:
+        req.add_header(WORKSPACE_HEADER, workspace)
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
 
     try:
@@ -100,13 +107,15 @@ def post_multipart(
         raise ApiError(0, None, f"could not reach {base_url(host)}: {err.reason}") from None
 
 
-def stream_sse(path: str, *, host: str, token: str) -> Iterator[dict]:
+def stream_sse(path: str, *, host: str, token: str, workspace: str | None = None) -> Iterator[dict]:
     """Yield each SSE `data:` payload. `{"done": true}` ends the iterator.
     No read timeout: idle time between heartbeats is expected."""
     req = urllib.request.Request(f"{base_url(host)}{path}")
     req.add_header("Accept", "text/event-stream")
     req.add_header("User-Agent", f"foro-cli/{version('foro')}")
     req.add_header("Authorization", f"Bearer {token}")
+    if workspace:
+        req.add_header(WORKSPACE_HEADER, workspace)
 
     try:
         response = urllib.request.urlopen(req)

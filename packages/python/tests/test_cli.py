@@ -4,12 +4,24 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-from foro import _config
+from foro import _config, _project_link
+from foro._api import ApiError
 from foro._manifest import DEFAULT_PORT, DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS
 from foro.cli import app
 from foro.dev import DevResult
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _reset_workspace_override():
+    """`--workspace` sets a module global; a test invoking `_resolve_workspace`
+    directly (not through `app`) must not see another test's leftover value."""
+    import foro.cli as cli_module
+
+    cli_module._workspace_override = None
+    yield
+    cli_module._workspace_override = None
 
 
 def test_version():
@@ -174,13 +186,105 @@ def test_auth_commands_require_a_login(logged_out, command):
     assert "not logged in to 127.0.0.1:1" in result.stdout
 
 
+def test_login_with_a_single_workspace_sets_it_as_default_without_prompting(logged_out, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import Identity, WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me",
+            workspace=WorkspaceRef(id="w-1", name="acme"),
+            workspaces=[WorkspaceRef(id="w-1", name="acme")],
+        ),
+    )
+
+    result = runner.invoke(app, ["auth", "login", "--with-token"], input=TOKEN + "\n")
+
+    assert result.exit_code == 0, result.output
+    assert "workspace: acme" in result.output.lower()
+    assert _config.load("127.0.0.1:1").workspace == "w-1"
+
+
+def test_login_with_several_workspaces_and_with_token_sets_no_default(logged_out, monkeypatch):
+    """--with-token is unattended; it must not prompt and must not guess."""
+    import foro.cli as cli_module
+    from foro.auth import Identity, WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me",
+            workspace=None,
+            workspaces=[WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+        ),
+    )
+
+    result = runner.invoke(app, ["auth", "login", "--with-token"], input=TOKEN + "\n")
+
+    assert result.exit_code == 0, result.output
+    assert "workspace:" not in result.output.lower()
+    assert _config.load("127.0.0.1:1").workspace is None
+
+
+def test_login_with_several_workspaces_prompts_and_stores_the_pick(monkeypatch, tmp_path):
+    """The interactive device flow still prompts to pick a default."""
+    import foro.cli as cli_module
+    from foro.auth import DeviceGrant, Identity, WorkspaceRef
+
+    monkeypatch.delenv(_config.ENV_TOKEN, raising=False)
+    monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    grant = DeviceGrant(
+        device_code="dev-code",
+        user_code="UC",
+        verification_uri="https://foro.sh/cli",
+        verification_uri_complete="https://foro.sh/cli?code=UC",
+        expires_in=900,
+        interval=5,
+    )
+    monkeypatch.setattr(cli_module, "start_device_flow", lambda host, label: grant)
+    monkeypatch.setattr(cli_module, "poll_for_token", lambda host, grant, on_wait=None: {"access_token": TOKEN})
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me",
+            workspace=None,
+            workspaces=[WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+        ),
+    )
+
+    result = runner.invoke(app, ["auth", "login"], input="2\n")
+
+    assert result.exit_code == 0, result.output
+    assert "workspace: umbrella" in result.output.lower()
+    assert _config.load("127.0.0.1:1").workspace == "w-2"
+
+
+def _with_default_workspace(logged_in, workspace_id="w-1"):
+    data = yaml.safe_load(logged_in.read_text())
+    data["127.0.0.1:1"]["workspace"] = workspace_id
+    logged_in.write_text(yaml.safe_dump(data))
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
 def test_auth_status_warns_when_config_file_is_insecure(logged_in, monkeypatch):
     import foro.cli as cli_module
-    from foro.auth import Identity
+    from foro.auth import Identity, WorkspaceRef
 
+    _with_default_workspace(logged_in)
     logged_in.chmod(0o644)
-    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me", workspace=None, workspaces=[WorkspaceRef(id="w-1", name="acme")]
+        ),
+    )
 
     result = runner.invoke(app, ["auth", "status"])
 
@@ -195,12 +299,29 @@ def test_auth_status_does_not_warn_when_config_file_is_secure(logged_in, monkeyp
     import foro.cli as cli_module
     from foro.auth import Identity
 
-    monkeypatch.setattr(cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace="acme"))
+    monkeypatch.setattr(
+        cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace=None, workspaces=[])
+    )
 
     result = runner.invoke(app, ["auth", "status"])
 
     assert result.exit_code == 0
     assert "readable by other users" not in result.stdout
+
+
+def test_auth_status_flags_a_default_workspace_that_no_longer_exists(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import Identity
+
+    _with_default_workspace(logged_in, workspace_id="gone")
+    monkeypatch.setattr(
+        cli_module, "fetch_identity", lambda host, token: Identity(user="me", workspace=None, workspaces=[])
+    )
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0
+    assert "gone (not found - run `foro workspace use`)" in result.stdout
 
 
 def test_auth_logout_deletes_the_local_token_when_revoke_fails(logged_in):
@@ -245,3 +366,179 @@ def test_detach_prints_the_mcp_endpoint(logged_in, tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.stdout
     assert "https://swift-harbor-a3f2.foro.sh/mcp" in result.stdout
+
+
+def test_workspace_list_marks_the_stored_default(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    _with_default_workspace(logged_in, workspace_id="w-2")
+    monkeypatch.setattr(
+        cli_module,
+        "list_workspaces",
+        lambda host, token: [WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+    )
+
+    result = runner.invoke(app, ["workspace", "list"])
+
+    assert result.exit_code == 0, result.output
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert lines[0].startswith("  acme")
+    assert lines[1].startswith("* umbrella")
+
+
+def test_workspace_use_resolves_by_name_and_stores_the_id(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module,
+        "list_workspaces",
+        lambda host, token: [WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+    )
+
+    result = runner.invoke(app, ["workspace", "use", "umbrella"])
+
+    assert result.exit_code == 0, result.output
+    assert "default workspace set to umbrella" in result.output
+    assert _config.load("127.0.0.1:1").workspace == "w-2"
+
+
+def test_workspace_use_accepts_an_id_too(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(cli_module, "list_workspaces", lambda host, token: [WorkspaceRef(id="w-1", name="acme")])
+
+    result = runner.invoke(app, ["workspace", "use", "w-1"])
+
+    assert result.exit_code == 0, result.output
+    assert _config.load("127.0.0.1:1").workspace == "w-1"
+
+
+def test_workspace_use_refuses_a_name_matching_nothing(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(cli_module, "list_workspaces", lambda host, token: [WorkspaceRef(id="w-1", name="acme")])
+
+    result = runner.invoke(app, ["workspace", "use", "nope"])
+
+    assert result.exit_code == 1
+    assert "no workspace matches" in result.output
+
+
+def test_workspace_use_with_an_env_token_is_refused(monkeypatch, tmp_path):
+    """There is no stored login to attach a default workspace to."""
+    monkeypatch.setenv(_config.ENV_TOKEN, TOKEN)
+    monkeypatch.setenv(_config.ENV_HOST, "127.0.0.1:1")
+
+    result = runner.invoke(app, ["workspace", "use", "acme"])
+
+    assert result.exit_code == 1
+    assert "no stored login" in result.output
+
+
+def test_global_workspace_flag_resolves_by_name_before_the_api_call(logged_in, monkeypatch):
+    """`--workspace` is a global option; it must resolve and reach list_projects."""
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module, "list_workspaces", lambda host, token: [WorkspaceRef(id="w-2", name="umbrella")]
+    )
+    captured = {}
+
+    def fake_list_projects(host, token, *, workspace=None):
+        captured["workspace"] = workspace
+        return []
+
+    monkeypatch.setattr(cli_module, "list_projects", fake_list_projects)
+
+    result = runner.invoke(app, ["--workspace", "umbrella", "projects"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-2"
+
+
+def test_resolve_workspace_priority_override_then_link_then_default(tmp_path, monkeypatch):
+    """--workspace > the directory's linked workspace > the stored default."""
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    creds = _config.Credentials(token="tok", workspace="w-default")
+
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-default"
+
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="s", workspace="w-link"))
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-link"
+
+    monkeypatch.setattr(
+        cli_module, "list_workspaces", lambda host, token: [WorkspaceRef(id="w-override", name="override")]
+    )
+    cli_module._workspace_override = "override"
+    try:
+        assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-override"
+    finally:
+        cli_module._workspace_override = None
+
+
+def test_resolve_workspace_without_a_path_ignores_any_link(tmp_path):
+    """The bare `foro projects` list has no directory, so only the default applies."""
+    import foro.cli as cli_module
+
+    creds = _config.Credentials(token="tok", workspace="w-default")
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="s", workspace="w-link"))
+
+    assert cli_module._resolve_workspace("foro.sh", creds) == "w-default"
+
+
+def test_workspace_required_is_explained_as_ambiguity_with_several_workspaces(monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module,
+        "list_workspaces",
+        lambda host, token: [WorkspaceRef(id="w-1", name="a"), WorkspaceRef(id="w-2", name="b")],
+    )
+
+    assert "more than one workspace" in cli_module._explain_workspace_required("foro.sh", "tok")
+
+
+def test_workspace_required_is_explained_as_onboarding_with_no_workspaces(monkeypatch):
+    import foro.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "list_workspaces", lambda host, token: [])
+
+    assert "finish onboarding" in cli_module._explain_workspace_required("foro.sh", "tok")
+
+
+def test_fail_disambiguates_workspace_required_when_host_and_token_are_given(monkeypatch, capsys):
+    import foro.cli as cli_module
+    from foro.auth import WorkspaceRef
+
+    monkeypatch.setattr(
+        cli_module,
+        "list_workspaces",
+        lambda host, token: [WorkspaceRef(id="w-1", name="a"), WorkspaceRef(id="w-2", name="b")],
+    )
+    err = ApiError(403, {"error": "workspace_required"}, "workspace_required")
+
+    cli_module._fail(err, "list projects", "foro.sh", "tok")
+
+    assert "more than one workspace" in capsys.readouterr().out
+
+
+def test_projects_link_persists_the_resolved_workspace(tmp_path, monkeypatch):
+    from foro import projects
+
+    monkeypatch.setattr(
+        projects,
+        "get_project",
+        lambda host, token, slug, *, workspace=None: {"slug": slug, "url": "https://x.foro.sh"},
+    )
+
+    projects.link(tmp_path, "foro.sh", "tok", "swift-harbor-a3f2", workspace="w-1")
+
+    assert _project_link.load(tmp_path, "foro.sh").workspace == "w-1"
