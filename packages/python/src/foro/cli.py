@@ -409,12 +409,14 @@ def _is_workspace_id(value: str | None) -> bool:
     return True
 
 
-def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None = None) -> str | None:
-    """`path` is the directory whose *own* link to consult, if any - pass
-    None when the command targets a project by an explicit slug instead
-    (`--project`, or `link` adopting a new one), so a stale link for
-    whatever project this directory used to point at is never applied to
-    a different one."""
+def _resolve_workspace(
+    host: str, creds: _config.Credentials, path: Path | None = None, *, slug: str | None = None
+) -> str | None:
+    """`path` is the directory whose own link to consult, if any. `slug` is
+    the project actually being acted on - when given, the link only counts
+    if it names that same project, so a slug this directory isn't linked to
+    (via `--project`, or `link` adopting a different one) never inherits a
+    stale link's workspace. Omit `slug` to trust the link unconditionally."""
     if _workspace_override is not None:
         if not _workspace_override:
             typer.secho("✗ --workspace cannot be empty", fg=typer.colors.RED)
@@ -422,7 +424,7 @@ def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None 
         return _resolve_workspace_ref(host, creds.token, _workspace_override).id
     if path is not None:
         link = _project_link.load(path, host)
-        if link and link.workspace:
+        if link and link.workspace and (slug is None or link.slug == slug):
             return link.workspace
     return creds.workspace if _is_workspace_id(creds.workspace) else None
 
@@ -693,10 +695,7 @@ def _resolve(path: Path, project: str | None) -> tuple[str, str, str, str | None
     except ProjectError as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    # An explicit --project may name a slug the directory isn't linked to -
-    # its link's workspace (if any) belongs to a different project then.
-    link_dir = path if project is None else None
-    return host, creds.token, slug, _resolve_workspace(host, creds, link_dir)
+    return host, creds.token, slug, _resolve_workspace(host, creds, path, slug=slug)
 
 
 @app.command()
@@ -714,9 +713,7 @@ def deploy(
         raise typer.Exit(code=1)
 
     host, creds = _require_credentials()
-    # --project deploys to a slug the directory may not be linked to; its
-    # link's workspace (if any) would then belong to a different project.
-    workspace = _resolve_workspace(host, creds, path if project is None else None)
+    workspace = _resolve_workspace(host, creds, path, slug=project)
 
     if not skip_check and not repo:
         result = run_check(path)
@@ -871,11 +868,12 @@ app.add_typer(projects_app, name="projects")
 
 @projects_app.callback(invoke_without_command=True)
 def projects_default(ctx: typer.Context) -> None:
-    """List every project in the token's workspace."""
+    """List every project in the resolved workspace (the current directory's
+    linked workspace, if any, ahead of the default)."""
     if ctx.invoked_subcommand is not None:
         return
     host, creds = _require_credentials()
-    workspace = _resolve_workspace(host, creds)
+    workspace = _resolve_workspace(host, creds, Path("."))
     try:
         rows = list_projects(host, creds.token, workspace=workspace)
     except ApiError as err:
@@ -919,9 +917,7 @@ def link(
 ) -> None:
     """Point this directory at a project created in the dashboard."""
     host, creds = _require_credentials()
-    # `link` (re)points `path` at `slug`; any link already there belongs to
-    # whatever project this directory used to track, not this one.
-    workspace = _resolve_workspace(host, creds)
+    workspace = _resolve_workspace(host, creds, path, slug=slug)
     try:
         row = link_project(path, host, creds.token, slug, workspace=workspace)
     except ApiError as err:

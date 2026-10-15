@@ -504,6 +504,27 @@ def test_global_workspace_flag_resolves_by_name_before_the_api_call(logged_in, m
     assert captured["workspace"] == "w-2"
 
 
+def test_bare_projects_list_uses_the_current_directorys_linked_workspace(logged_in, tmp_path, monkeypatch):
+    """A linked directory's workspace comes ahead of the stored default,
+    even for the bare list (no path argument of its own - uses cwd)."""
+    import foro.cli as cli_module
+
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="s", workspace="w-cwd"))
+    monkeypatch.chdir(tmp_path)
+    captured = {}
+
+    def fake_list_projects(host, token, *, workspace=None):
+        captured["workspace"] = workspace
+        return []
+
+    monkeypatch.setattr(cli_module, "list_projects", fake_list_projects)
+
+    result = runner.invoke(app, ["projects"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-cwd"
+
+
 DEFAULT_WORKSPACE_ID = "11111111-1111-1111-1111-111111111111"
 
 
@@ -529,8 +550,9 @@ def test_resolve_workspace_priority_override_then_link_then_default(tmp_path, mo
         cli_module._workspace_override = None
 
 
-def test_resolve_workspace_without_a_path_ignores_any_link(tmp_path):
-    """The bare `foro projects` list has no directory, so only the default applies."""
+def test_resolve_workspace_with_no_path_at_all_only_applies_the_default(tmp_path):
+    """No directory to consult (e.g. a command with no `path` argument of
+    its own) means only `--workspace`/the stored default can apply."""
     import foro.cli as cli_module
 
     creds = _config.Credentials(token="tok", workspace=DEFAULT_WORKSPACE_ID)
@@ -547,6 +569,19 @@ def test_resolve_workspace_ignores_a_pre_129_name_shaped_default(tmp_path):
     creds = _config.Credentials(token="tok", workspace="acme")
 
     assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) is None
+
+
+def test_resolve_workspace_slug_mismatch_falls_through_to_the_default(tmp_path):
+    """A `slug` that differs from the directory's own link means the link
+    belongs to a different project - the stored default applies instead."""
+    import foro.cli as cli_module
+
+    creds = _config.Credentials(token="tok", workspace=DEFAULT_WORKSPACE_ID)
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="linked-slug", workspace="w-link"))
+
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path, slug="linked-slug") == "w-link"
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path, slug="other-slug") == DEFAULT_WORKSPACE_ID
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-link"
 
 
 def test_empty_workspace_flag_is_rejected_loudly(logged_in):
@@ -597,6 +632,51 @@ def test_deploy_ignores_the_directorys_link_when_project_is_overridden(logged_in
     assert captured["workspace"] is None
 
 
+def test_deploy_still_uses_the_links_workspace_when_project_matches_it(logged_in, tmp_path, monkeypatch):
+    """--project repeating the directory's own linked slug is not a mismatch."""
+    import foro.cli as cli_module
+    from foro.deploy import Started
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="swift-harbor-a3f2", workspace="w-link")
+    )
+    captured = {}
+
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+        captured["workspace"] = workspace
+        return Started(slug="swift-harbor-a3f2", deployment_id="d1", url="https://x.foro.sh", created=False)
+
+    monkeypatch.setattr(cli_module, "deploy_project", fake_deploy_project)
+
+    result = runner.invoke(
+        app, ["deploy", str(tmp_path), "--project", "swift-harbor-a3f2", "--detach", "--skip-check"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-link"
+
+
+def test_deploy_uses_the_directorys_linked_workspace_when_no_override_is_given(logged_in, tmp_path, monkeypatch):
+    import foro.cli as cli_module
+    from foro.deploy import Started
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="swift-harbor-a3f2", workspace="w-link")
+    )
+    captured = {}
+
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+        captured["workspace"] = workspace
+        return Started(slug="swift-harbor-a3f2", deployment_id="d1", url="https://x.foro.sh", created=False)
+
+    monkeypatch.setattr(cli_module, "deploy_project", fake_deploy_project)
+
+    result = runner.invoke(app, ["deploy", str(tmp_path), "--detach", "--skip-check"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-link"
+
+
 def test_link_ignores_a_pre_existing_links_workspace_when_repointing(logged_in, tmp_path, monkeypatch):
     """`link` adopts a new slug for this directory; any link already there
     is for whatever project it used to track, not this one."""
@@ -617,6 +697,27 @@ def test_link_ignores_a_pre_existing_links_workspace_when_repointing(logged_in, 
 
     assert result.exit_code == 0, result.output
     assert captured["workspace"] is None
+
+
+def test_link_reuses_the_links_workspace_when_the_slug_is_unchanged(logged_in, tmp_path, monkeypatch):
+    """Re-running `link` for the same slug is not a repoint."""
+    import foro.cli as cli_module
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="swift-harbor-a3f2", workspace="w-link")
+    )
+    captured = {}
+
+    def fake_link_project(path, host, token, slug, *, workspace=None):
+        captured["workspace"] = workspace
+        return {"slug": slug, "url": "https://x.foro.sh"}
+
+    monkeypatch.setattr(cli_module, "link_project", fake_link_project)
+
+    result = runner.invoke(app, ["link", "swift-harbor-a3f2", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-link"
 
 
 def test_workspace_required_is_explained_as_ambiguity_with_several_workspaces(monkeypatch):
