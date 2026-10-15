@@ -229,6 +229,49 @@ def test_login_with_several_workspaces_and_with_token_sets_no_default(logged_out
     assert _config.load("127.0.0.1:1").workspace is None
 
 
+def test_reauth_with_token_keeps_an_existing_valid_default(logged_in, monkeypatch):
+    """A non-interactive re-login must not wipe a working default it can't re-derive."""
+    import foro.cli as cli_module
+    from foro.auth import Identity, WorkspaceRef
+
+    _with_default_workspace(logged_in, workspace_id="w-2")
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me",
+            workspace=None,
+            workspaces=[WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+        ),
+    )
+
+    result = runner.invoke(app, ["auth", "login", "--with-token", "--force"], input=TOKEN + "\n")
+
+    assert result.exit_code == 0, result.output
+    assert _config.load("127.0.0.1:1").workspace == "w-2"
+
+
+def test_reauth_with_token_drops_a_default_that_is_no_longer_a_member(logged_in, monkeypatch):
+    import foro.cli as cli_module
+    from foro.auth import Identity, WorkspaceRef
+
+    _with_default_workspace(logged_in, workspace_id="w-removed")
+    monkeypatch.setattr(
+        cli_module,
+        "fetch_identity",
+        lambda host, token: Identity(
+            user="me",
+            workspace=None,
+            workspaces=[WorkspaceRef(id="w-1", name="acme"), WorkspaceRef(id="w-2", name="umbrella")],
+        ),
+    )
+
+    result = runner.invoke(app, ["auth", "login", "--with-token", "--force"], input=TOKEN + "\n")
+
+    assert result.exit_code == 0, result.output
+    assert _config.load("127.0.0.1:1").workspace is None
+
+
 def test_login_with_several_workspaces_prompts_and_stores_the_pick(monkeypatch, tmp_path):
     """The interactive device flow still prompts to pick a default."""
     import foro.cli as cli_module
@@ -461,14 +504,17 @@ def test_global_workspace_flag_resolves_by_name_before_the_api_call(logged_in, m
     assert captured["workspace"] == "w-2"
 
 
+DEFAULT_WORKSPACE_ID = "11111111-1111-1111-1111-111111111111"
+
+
 def test_resolve_workspace_priority_override_then_link_then_default(tmp_path, monkeypatch):
     """--workspace > the directory's linked workspace > the stored default."""
     import foro.cli as cli_module
     from foro.auth import WorkspaceRef
 
-    creds = _config.Credentials(token="tok", workspace="w-default")
+    creds = _config.Credentials(token="tok", workspace=DEFAULT_WORKSPACE_ID)
 
-    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-default"
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == DEFAULT_WORKSPACE_ID
 
     _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="s", workspace="w-link"))
     assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) == "w-link"
@@ -487,10 +533,20 @@ def test_resolve_workspace_without_a_path_ignores_any_link(tmp_path):
     """The bare `foro projects` list has no directory, so only the default applies."""
     import foro.cli as cli_module
 
-    creds = _config.Credentials(token="tok", workspace="w-default")
+    creds = _config.Credentials(token="tok", workspace=DEFAULT_WORKSPACE_ID)
     _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="s", workspace="w-link"))
 
-    assert cli_module._resolve_workspace("foro.sh", creds) == "w-default"
+    assert cli_module._resolve_workspace("foro.sh", creds) == DEFAULT_WORKSPACE_ID
+
+
+def test_resolve_workspace_ignores_a_pre_129_name_shaped_default(tmp_path):
+    """A hosts.yml written by the pre-#129 CLI stores a workspace *name* here,
+    not an id - it must not be sent as the header (see `_is_workspace_id`)."""
+    import foro.cli as cli_module
+
+    creds = _config.Credentials(token="tok", workspace="acme")
+
+    assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) is None
 
 
 def test_workspace_required_is_explained_as_ambiguity_with_several_workspaces(monkeypatch):
@@ -528,6 +584,26 @@ def test_fail_disambiguates_workspace_required_when_host_and_token_are_given(mon
     cli_module._fail(err, "list projects", "foro.sh", "tok")
 
     assert "more than one workspace" in capsys.readouterr().out
+
+
+def test_logs_command_passes_the_linked_directorys_workspace_through(logged_in, tmp_path, monkeypatch):
+    import foro.cli as cli_module
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="swift-harbor-a3f2", workspace="w-link")
+    )
+    captured = {}
+
+    def fake_read_runtime(host, token, slug, *, workspace=None):
+        captured["workspace"] = workspace
+        return [{"line": "hello"}]
+
+    monkeypatch.setattr(cli_module, "read_runtime", fake_read_runtime)
+
+    result = runner.invoke(app, ["logs", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] == "w-link"
 
 
 def test_projects_link_persists_the_resolved_workspace(tmp_path, monkeypatch):

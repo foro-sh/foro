@@ -6,6 +6,7 @@ import re
 import socket
 import sys
 import threading
+import uuid
 import webbrowser
 from importlib.metadata import version
 from pathlib import Path
@@ -394,6 +395,20 @@ def _resolve_workspace_ref(host: str, token: str, query: str) -> auth.WorkspaceR
     return matches[0]
 
 
+def _is_workspace_id(value: str | None) -> bool:
+    """Workspace ids are server-generated UUIDs. A pre-#129 CLI stored the
+    workspace *name* in this same field, so a stale `hosts.yml` entry must
+    not be sent as a header - it would 403 as `not_a_member` for every
+    command instead of just falling back to the server's own resolution."""
+    if not value:
+        return False
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None = None) -> str | None:
     if _workspace_override:
         return _resolve_workspace_ref(host, creds.token, _workspace_override).id
@@ -401,7 +416,7 @@ def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None 
         link = _project_link.load(path, host)
         if link and link.workspace:
             return link.workspace
-    return creds.workspace
+    return creds.workspace if _is_workspace_id(creds.workspace) else None
 
 
 def _select_default_workspace(identity: auth.Identity, *, interactive: bool) -> auth.WorkspaceRef | None:
@@ -419,7 +434,7 @@ def _select_default_workspace(identity: auth.Identity, *, interactive: bool) -> 
     index = choice - 1
     if not (0 <= index < len(identity.workspaces)):
         typer.secho(
-            "✗ invalid choice - no default workspace set; run `foro workspace use` later",
+            "✗ invalid choice - default workspace left unchanged; run `foro workspace use` to set one",
             fg=typer.colors.YELLOW,
         )
         return None
@@ -465,6 +480,10 @@ def auth_login(
         raise typer.Exit(code=1) from None
 
     default_workspace = _select_default_workspace(identity, interactive=not with_token)
+    if default_workspace is None and existing and existing.workspace:
+        # Non-interactive re-login (or a mistyped prompt) resolved nothing new -
+        # keep whatever default was already working rather than wiping it.
+        default_workspace = next((w for w in identity.workspaces if w.id == existing.workspace), None)
     _config.save(
         host,
         _config.Credentials(
