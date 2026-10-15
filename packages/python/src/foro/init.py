@@ -10,6 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from foro import _scaffold_node, _scaffold_rust
 from foro._manifest import (
     DEFAULT_PORT,
     DEFAULT_RUNTIME,
@@ -22,6 +23,17 @@ from foro._python_project import DependencyManagerError, detect_dependency_manag
 
 ENTRYPOINT_CANDIDATES = PYTHON_ENTRYPOINT_CANDIDATES
 
+# User-facing runtime labels for `foro init` prompts. `nodejs` maps to the
+# platform's `node` runtime; `rust` is scaffold-only until the platform
+# grows a Rust runtime.
+INIT_RUNTIME_CHOICES = ("python", "nodejs", "rust")
+INIT_RUNTIME_TO_INTERNAL = {"python": "python", "nodejs": "node", "rust": "rust"}
+DEFAULT_ENTRYPOINTS = {
+    "python": "server.py",
+    "node": "server.js",
+    "rust": "src/main.rs",
+}
+
 
 @dataclass
 class ManifestFields:
@@ -31,6 +43,16 @@ class ManifestFields:
     runtime_version: str = DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME]
     port: int = DEFAULT_PORT
     dependency_manager: str | None = None
+
+
+def normalize_init_runtime(raw: str) -> str | None:
+    """Map a prompt answer to an internal runtime, or None if unknown."""
+    key = raw.strip().lower()
+    if key in INIT_RUNTIME_TO_INTERNAL:
+        return INIT_RUNTIME_TO_INTERNAL[key]
+    if key == "node":
+        return "node"
+    return None
 
 
 def detect_entrypoint_candidates(dir_path: Path) -> list[str]:
@@ -228,7 +250,7 @@ pythonpath = ["."]
 
 _README_TEMPLATE = '''# {name}
 
-An MCP server, deployable on [foro.sh](https://foro.sh).
+An MCP server for Python {python_version}, deployable on [foro.sh](https://foro.sh).
 
 ## Structure
 
@@ -238,11 +260,14 @@ An MCP server, deployable on [foro.sh](https://foro.sh).
   automatically, so there's no import list to maintain
 - `server.py` - the deploy entrypoint (the name foro looks for - don't rename)
 
-## Develop
+## Run locally
 
 ```bash
+uv sync
+uv run server.py
+# or, identical to how foro.sh will run it:
 uv tool install foro   # once
-foro dev               # runs the server exactly as foro.sh will
+foro dev
 ```
 
 Copy `.env.example` to `.env` and fill in any secrets your tools need -
@@ -257,7 +282,8 @@ uv run pytest
 
 ## Deploy
 
-Push this repo to GitHub, then connect it from the foro.sh dashboard.
+Push this repo to GitHub, then connect it from the foro.sh dashboard, or run
+`foro deploy` after `foro auth login`.
 '''
 
 _GITIGNORE_TEMPLATE = '''.venv/
@@ -283,8 +309,25 @@ class ScaffoldError(Exception):
 
 
 def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False) -> None:
-    """Write a from-scratch project. `uv add --dev pytest` locks and installs
-    last; failure deletes only files this call created."""
+    """Write a from-scratch project for `fields.runtime`.
+
+    Python locks with `uv`, Node with `npm`, Rust with `cargo generate-lockfile`.
+    Failure deletes only files this call created.
+    """
+    if fields.runtime == "python":
+        _scaffold_python(dir_path, fields, git_init=git_init)
+    elif fields.runtime == "node":
+        _scaffold_node_project(dir_path, fields, git_init=git_init)
+    elif fields.runtime == "rust":
+        _scaffold_rust_project(dir_path, fields, git_init=git_init)
+    else:
+        raise ScaffoldError(
+            f"unknown runtime {fields.runtime!r} - choose one of "
+            f"{', '.join(INIT_RUNTIME_CHOICES)}"
+        )
+
+
+def _scaffold_python(dir_path: Path, fields: ManifestFields, *, git_init: bool) -> None:
     created_root = not dir_path.exists()
     written: list[Path] = []
 
@@ -311,7 +354,10 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
             dir_path / "pyproject.toml",
             _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
         )
-        write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
+        write(
+            dir_path / "README.md",
+            _README_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
+        )
         write(dir_path / ".gitignore", _GITIGNORE_TEMPLATE)
         write(dir_path / ".env.example", _ENV_EXAMPLE_TEMPLATE)
 
@@ -326,26 +372,89 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
             raise ScaffoldError(
                 f"`uv add --dev pytest` failed in {dir_path}:\n{(err.stderr or '').strip()}"
             ) from None
+
+        # Non-default port / entrypoint land in [tool.foro]; defaults stay inferred.
+        write_foro_table(dir_path, fields)
     except BaseException:
-        _remove_scaffold(dir_path, written, created_root)
+        _remove_scaffold(dir_path, written, created_root, runtime="python")
         raise
 
     if git_init:
         init_git_repo(dir_path)
 
 
-def _remove_scaffold(dir_path: Path, written: list[Path], created_root: bool) -> None:
+def _scaffold_node_project(dir_path: Path, fields: ManifestFields, *, git_init: bool) -> None:
+    created_root = not dir_path.exists()
+    written: list[Path] = []
+
+    def write(path: Path, text: str) -> None:
+        path.write_text(text)
+        written.append(path)
+
+    dir_path.mkdir(parents=True, exist_ok=True)
+    try:
+        _scaffold_node.write_files(
+            dir_path,
+            name=fields.name,
+            runtime_version=fields.runtime_version,
+            port=fields.port,
+            entrypoint=fields.entrypoint,
+            write=write,
+        )
+        try:
+            _scaffold_node.install_deps(dir_path)
+        except RuntimeError as err:
+            raise ScaffoldError(str(err)) from None
+    except BaseException:
+        _remove_scaffold(dir_path, written, created_root, runtime="node")
+        raise
+
+    if git_init:
+        init_git_repo(dir_path)
+
+
+def _scaffold_rust_project(dir_path: Path, fields: ManifestFields, *, git_init: bool) -> None:
+    created_root = not dir_path.exists()
+    written: list[Path] = []
+
+    def write(path: Path, text: str) -> None:
+        path.write_text(text)
+        written.append(path)
+
+    dir_path.mkdir(parents=True, exist_ok=True)
+    try:
+        _scaffold_rust.write_files(dir_path, name=fields.name, port=fields.port, write=write)
+        try:
+            _scaffold_rust.fetch_deps(dir_path)
+        except RuntimeError as err:
+            raise ScaffoldError(str(err)) from None
+    except BaseException:
+        _remove_scaffold(dir_path, written, created_root, runtime="rust")
+        raise
+
+    if git_init:
+        init_git_repo(dir_path)
+
+
+def _remove_scaffold(
+    dir_path: Path, written: list[Path], created_root: bool, *, runtime: str = "python"
+) -> None:
     if created_root:
         shutil.rmtree(dir_path, ignore_errors=True)
         return
     for path in written:
         path.unlink(missing_ok=True)
-    (dir_path / "uv.lock").unlink(missing_ok=True)
-    shutil.rmtree(dir_path / ".venv", ignore_errors=True)
-    for name in ("tools", "tests"):
-        directory = dir_path / name
-        if directory.is_dir() and not any(directory.iterdir()):
-            directory.rmdir()
+    if runtime == "python":
+        (dir_path / "uv.lock").unlink(missing_ok=True)
+        shutil.rmtree(dir_path / ".venv", ignore_errors=True)
+        for name in ("tools", "tests"):
+            directory = dir_path / name
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+    elif runtime == "node":
+        _scaffold_node.cleanup_partial(dir_path)
+    elif runtime == "rust":
+        _scaffold_rust.cleanup_partial(dir_path)
 
 
 class GitInitError(Exception):

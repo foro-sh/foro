@@ -34,7 +34,14 @@ class DevResult:
     tool_names: list[str]
 
 
-def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) -> subprocess.Popen:
+def start_server(
+    repo_dir: Path,
+    entrypoint: str,
+    build_path: str,
+    port: int,
+    *,
+    runtime: str = "python",
+) -> subprocess.Popen:
     from dotenv import dotenv_values
 
     build_dir = repo_dir / build_path
@@ -48,12 +55,16 @@ def start_server(repo_dir: Path, entrypoint: str, build_path: str, port: int) ->
         # Last so the manifest port wins over PORT in .env.
         "PORT": str(port),
     }
-    return popen(
-        ["uv", "run", entrypoint],
-        cwd=build_dir,
-        env=env,
-        stdin=subprocess.DEVNULL,
-    )
+    if runtime == "node":
+        argv = ["node", entrypoint]
+    elif runtime == "python":
+        argv = ["uv", "run", entrypoint]
+    else:
+        raise DevError(
+            f"foro dev cannot start a `{runtime}` project yet - run it with "
+            "the runtime's own command (see the project's README)"
+        )
+    return popen(argv, cwd=build_dir, env=env, stdin=subprocess.DEVNULL)
 
 
 def port_is_open(port: int, timeout: float = 1.0) -> bool:
@@ -140,13 +151,24 @@ def run_dev(repo_dir: Path | str, timeout: float = DEFAULT_TIMEOUT) -> tuple[sub
     manifest = parse_and_validate(repo_dir, ".")
 
     if port_is_open(manifest.port):
+        where = (
+            "package.json's `foro.port`"
+            if manifest.runtime == "node"
+            else "its [tool.foro] table"
+        )
         raise DevError(
             f"port {manifest.port} is already in use - something else is listening on "
             "it, so foro dev cannot tell its server apart from that one. Stop it, or "
-            "give this project a different `port` in its [tool.foro] table."
+            f"give this project a different `port` in {where}."
         )
 
-    process = start_server(repo_dir, manifest.entrypoint, manifest.build_path, manifest.port)
+    process = start_server(
+        repo_dir,
+        manifest.entrypoint,
+        manifest.build_path,
+        manifest.port,
+        runtime=manifest.runtime,
+    )
     try:
         if not wait_for_port(manifest.port, timeout=timeout, process=process):
             raise DevError(_unhealthy_reason(process, manifest.port, timeout))

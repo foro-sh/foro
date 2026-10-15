@@ -19,11 +19,9 @@ anything:
 1. **Python or Node.** For Python, any of `uv`, PDM, Poetry, pipenv, or a
    plain `requirements.txt` works — the platform detects which from the
    lockfile or `pyproject.toml` in the build directory. `uv` is the default and
-   what `foro init` scaffolds, so prefer it for a new project, but never tell
-   someone their existing Poetry or `requirements.txt` project can't ship. A
-   Node server ships too, built with npm, pnpm or yarn; `foro init` only
-   scaffolds Python, so for Node write the server and let its `package.json`
-   describe it.
+   what `foro init --yes` scaffolds. `foro init` also scaffolds Node.js (and a
+   local-only Rust option); prefer the CLI over hand-writing a server. Never
+   tell someone their existing Poetry or `requirements.txt` project can't ship.
 2. **Secrets go in the dashboard, never in the repo.** API keys and tokens are
    added in the project's Secrets tab on the foro.sh dashboard and arrive as
    environment variables at deploy time. Never commit a secret, never put one
@@ -39,18 +37,23 @@ runs it whatever the project itself is managed with):
 
 ```bash
 uvx foro init <name> --yes
+# Node.js instead of the Python default:
+# uvx foro init <name> --yes --runtime nodejs --runtime-version 24
 cd <name>
 ```
 
-`--yes` takes every default (name from the directory, Python 3.12, port 8000,
-git init) instead of prompting. You are running this non-interactively, so
-without it `foro init` blocks on its first prompt and aborts. Drop the flag
-only when the user is running the command themselves and wants to answer.
+`--yes` takes every default (name from the directory, Python runtime 3.12,
+port 8000, git init) instead of prompting. Pass `--runtime nodejs` (or `rust`)
+when the user asked for that stack. You are running this non-interactively, so
+without `--yes` `foro init` blocks on its first prompt and aborts. Drop the
+flag only when the user is running the command themselves and wants to pick
+runtime / version interactively.
 
-`foro init` writes a working [FastMCP](https://gofastmcp.com) server plus
-`pyproject.toml` + `uv.lock`. Read the generated files and
-**explain what they contain** — the entrypoint, the example tool, and how
-`foro.run(...)` starts the server — rather than regenerating them by hand.
+`foro init` writes a working MCP server for the chosen runtime. For Python
+that is [FastMCP](https://gofastmcp.com) plus `pyproject.toml` + `uv.lock`.
+Read the generated files and **explain what they contain** — the entrypoint,
+the example tool, and the local run command in the README — rather than
+regenerating them by hand.
 
 If the user already has a working MCP server rather than an empty folder, this
 is the wrong skill: use `add-foro-to-existing-server`, which handles the

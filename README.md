@@ -51,7 +51,7 @@ tooling it never runs.
 
 | Command | What it does |
 | --- | --- |
-| `foro init [name]` | Scaffold a project, or record settings in an existing `pyproject.toml` |
+| `foro init [name]` | Scaffold a Python, Node.js, or Rust MCP server (prompts for runtime), or record settings in an existing `pyproject.toml` |
 | `foro check [path]` | Validate a repo against the deploy contract |
 | `foro dev [path]` | Run the server the way a container will, and report whether it passes |
 | `foro verify <url>` | Open a session against a deployed URL and list its tools |

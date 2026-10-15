@@ -51,6 +51,8 @@ from foro.projects import link as link_project
 from foro.dev import DevError, InspectorUnavailable, run_dev, start_inspector, stop
 from foro._proc import MissingToolError
 from foro.init import (
+    DEFAULT_ENTRYPOINTS,
+    INIT_RUNTIME_CHOICES,
     GitInitError,
     ManifestFields,
     ScaffoldError,
@@ -58,6 +60,7 @@ from foro.init import (
     detect_existing_dependency_manager,
     existing_foro_table_diff,
     init_git_repo,
+    normalize_init_runtime,
     scaffold_new,
     MissingPyprojectError,
     write_foro_table,
@@ -155,10 +158,23 @@ def _prompt_entrypoint(default: str) -> str:
         )
 
 
+def _prompt_runtime(default: str = "python") -> str:
+    """Ask which language to scaffold. Accepts `node` as an alias for `nodejs`."""
+    choices = "/".join(INIT_RUNTIME_CHOICES)
+    display_default = "nodejs" if default == "node" else default
+    while True:
+        value = _prompt(f"Runtime ({choices})", default=display_default)
+        runtime = normalize_init_runtime(value)
+        if runtime is not None:
+            return runtime
+        typer.secho(f"Must be one of {', '.join(INIT_RUNTIME_CHOICES)}", fg=typer.colors.RED)
+
+
 def _prompt_runtime_version(runtime: str, default: str) -> str:
     versions = RUNTIME_VERSIONS[runtime]
+    label = "Node.js" if runtime == "node" else runtime.capitalize()
     while True:
-        value = _prompt(f"{runtime.capitalize()} version ({'/'.join(versions)})", default=default)
+        value = _prompt(f"{label} version ({'/'.join(versions)})", default=default)
         if value in versions:
             return value
         typer.secho(f"Must be one of {', '.join(versions)}", fg=typer.colors.RED)
@@ -199,18 +215,71 @@ def init(
         "unattended (in CI, or when an agent drives it). An existing "
         "[tool.foro] table is still never overwritten.",
     ),
+    runtime: Optional[str] = typer.Option(
+        None,
+        "--runtime",
+        "-r",
+        help="Runtime to scaffold: python, nodejs, or rust. Skips the runtime "
+        "prompt; with --yes, also skips the version prompt (platform default).",
+    ),
+    runtime_version: Optional[str] = typer.Option(
+        None,
+        "--runtime-version",
+        help="Python (3.11/3.12/3.13) or Node.js (22/24) version. Ignored for rust.",
+    ),
 ) -> None:
     """Scaffold a new MCP server, or record an existing one\'s foro settings."""
     global _assume_yes
     _assume_yes = yes
 
     if name is not None:
-        _init_from_scratch(Path(name))
+        _init_from_scratch(Path(name), runtime_flag=runtime, runtime_version_flag=runtime_version)
     else:
+        if runtime is not None or runtime_version is not None:
+            typer.secho(
+                "✗ --runtime / --runtime-version only apply when scaffolding a new "
+                "directory (`foro init <name>`)",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
         _init_existing(Path("."))
 
 
-def _init_from_scratch(target: Path) -> None:
+def _resolve_init_runtime(runtime_flag: str | None) -> str:
+    if runtime_flag is None:
+        return _prompt_runtime(DEFAULT_RUNTIME)
+    resolved = normalize_init_runtime(runtime_flag)
+    if resolved is None:
+        typer.secho(
+            f"✗ unknown runtime {runtime_flag!r} - choose one of "
+            f"{', '.join(INIT_RUNTIME_CHOICES)}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    return resolved
+
+
+def _resolve_init_runtime_version(runtime: str, version_flag: str | None) -> str:
+    if runtime not in RUNTIME_VERSIONS:
+        return DEFAULT_RUNTIME_VERSIONS.get(runtime, "stable")
+    default = DEFAULT_RUNTIME_VERSIONS[runtime]
+    if version_flag is None:
+        return _prompt_runtime_version(runtime, default)
+    if version_flag not in RUNTIME_VERSIONS[runtime]:
+        typer.secho(
+            f"✗ runtime version must be one of {', '.join(RUNTIME_VERSIONS[runtime])}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    return version_flag
+
+
+def _init_from_scratch(
+    target: Path,
+    *,
+    runtime_flag: str | None = None,
+    runtime_version_flag: str | None = None,
+) -> None:
     if target.exists() and any(target.iterdir()):
         typer.secho(
             f"✗ {target} already exists and is not empty - run `foro init` with no "
@@ -220,11 +289,18 @@ def _init_from_scratch(target: Path) -> None:
         raise typer.Exit(code=1)
 
     name = _prompt_name(_sanitize_name(target.name))
-    runtime_version = _prompt_runtime_version(DEFAULT_RUNTIME, DEFAULT_RUNTIME_VERSIONS[DEFAULT_RUNTIME])
+    runtime = _resolve_init_runtime(runtime_flag)
+    runtime_version = _resolve_init_runtime_version(runtime, runtime_version_flag)
     port = _prompt_port(DEFAULT_PORT)
     git_init = _confirm("Initialize a git repo here?", default=True)
 
-    fields = ManifestFields(name=name, entrypoint="server.py", runtime_version=runtime_version, port=port)
+    fields = ManifestFields(
+        name=name,
+        entrypoint=DEFAULT_ENTRYPOINTS[runtime],
+        runtime=runtime,
+        runtime_version=runtime_version,
+        port=port,
+    )
     try:
         scaffold_new(target, fields, git_init=git_init)
     except ScaffoldError as err:
@@ -234,7 +310,14 @@ def _init_from_scratch(target: Path) -> None:
         typer.secho(f"warning: {err}", fg=typer.colors.YELLOW)
 
     typer.secho(f"✓ scaffolded {target}", fg=typer.colors.GREEN)
-    typer.echo(f"  cd {target} && foro dev")
+    if runtime == "rust":
+        typer.echo(f"  cd {target} && cargo run")
+        typer.secho(
+            "  note: Rust scaffolds run locally only — foro.sh does not deploy Rust yet",
+            fg=typer.colors.YELLOW,
+        )
+    else:
+        typer.echo(f"  cd {target} && foro dev")
 
 
 def _init_existing(dir_path: Path) -> None:
