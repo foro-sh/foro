@@ -163,6 +163,7 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
     assert (target / "uv.lock").exists()
     assert re.search(r'^name = "pytest"$', (target / "uv.lock").read_text(), re.MULTILINE)
     assert (target / "README.md").exists()
+    assert "uv run server.py" in (target / "README.md").read_text()
     assert ".foro/" in (target / ".gitignore").read_text().splitlines()
     assert (target / ".env.example").exists()
     assert not (target / ".git").exists()
@@ -177,6 +178,59 @@ def test_scaffold_new_writes_a_project_that_passes_check(tmp_path):
 
     result = run_check(target)
     assert result.ok, result.message
+
+
+def test_scaffold_new_records_a_non_default_port(tmp_path):
+    target = tmp_path / "custom-port"
+    fields = ManifestFields(name="custom-port", entrypoint="server.py", port=9000)
+
+    scaffold_new(target, fields, git_init=False)
+
+    assert "port = 9000" in (target / "pyproject.toml").read_text()
+    assert parse_and_validate(target, ".").port == 9000
+
+
+def test_scaffold_new_nodejs_passes_check(tmp_path):
+    target = tmp_path / "node-scaffolded"
+    fields = ManifestFields(
+        name="node-scaffolded",
+        entrypoint="server.js",
+        runtime="node",
+        runtime_version="24",
+        port=8000,
+    )
+
+    scaffold_new(target, fields, git_init=False)
+
+    assert (target / "server.js").exists()
+    assert (target / "package.json").exists()
+    assert (target / "package-lock.json").exists()
+    assert "npm start" in (target / "README.md").read_text()
+
+    manifest = parse_and_validate(target, ".")
+    assert manifest.runtime == "node"
+    assert manifest.entrypoint == "server.js"
+
+    result = run_check(target)
+    assert result.ok, result.message
+
+
+def test_scaffold_new_rust_is_runnable_locally(tmp_path):
+    target = tmp_path / "rust-scaffolded"
+    fields = ManifestFields(
+        name="rust-scaffolded",
+        entrypoint="src/main.rs",
+        runtime="rust",
+        runtime_version="stable",
+        port=8000,
+    )
+
+    scaffold_new(target, fields, git_init=False)
+
+    assert (target / "Cargo.toml").exists()
+    assert (target / "src" / "main.rs").exists()
+    assert (target / "Cargo.lock").exists()
+    assert "cargo run" in (target / "README.md").read_text()
 
 
 def test_scaffold_new_git_init(tmp_path):
@@ -218,14 +272,80 @@ def test_cli_init_from_scratch(tmp_path):
     result = runner.invoke(
         app,
         ["init", str(target)],
-        input="\n\n\nn\n",  # accept name/runtime_version/port defaults, decline git init
+        # name, runtime, runtime_version, port; decline git init
+        input="\n\n\n\nn\n",
     )
 
     assert result.exit_code == 0, result.stdout
     manifest = parse_and_validate(target, ".")
     assert manifest.name == "cli-scratch"
     assert manifest.entrypoint == "server.py"
+    assert manifest.runtime == "python"
     assert not (target / ".git").exists()
+    assert "uv run server.py" in (target / "README.md").read_text()
+
+
+def test_cli_init_from_scratch_nodejs(tmp_path):
+    target = tmp_path / "cli-node"
+
+    result = runner.invoke(
+        app,
+        ["init", str(target)],
+        # name, nodejs, version default, port; decline git
+        input="\nnodejs\n\n\nn\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert (target / "package.json").is_file()
+    assert (target / "server.js").is_file()
+    assert (target / "package-lock.json").is_file()
+    assert "npm start" in (target / "README.md").read_text()
+    manifest = parse_and_validate(target, ".")
+    assert manifest.runtime == "node"
+    assert manifest.entrypoint == "server.js"
+    assert "foro dev" in result.stdout
+
+
+def test_cli_init_yes_with_runtime_flag_scaffolds_nodejs(tmp_path):
+    target = tmp_path / "cli-node-yes"
+
+    result = runner.invoke(app, ["init", str(target), "--yes", "--runtime", "nodejs"])
+
+    assert result.exit_code == 0, result.stdout
+    manifest = parse_and_validate(target, ".")
+    assert manifest.runtime == "node"
+    assert manifest.runtime_version == "24"
+    assert (target / ".git").is_dir()
+
+
+def test_cli_init_rejects_unknown_runtime_flag(tmp_path):
+    target = tmp_path / "bad-runtime"
+
+    result = runner.invoke(app, ["init", str(target), "--yes", "--runtime", "ruby"])
+
+    assert result.exit_code == 1
+    assert "unknown runtime" in result.stdout
+    assert not target.exists()
+
+
+def test_cli_init_from_scratch_rust(tmp_path):
+    target = tmp_path / "cli-rust"
+
+    result = runner.invoke(
+        app,
+        ["init", str(target)],
+        # name, rust (no version prompt), port; decline git
+        input="\nrust\n\nn\n",
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert (target / "Cargo.toml").is_file()
+    assert (target / "src" / "main.rs").is_file()
+    assert (target / "Cargo.lock").is_file()
+    readme = (target / "README.md").read_text()
+    assert "cargo run" in readme
+    assert "cargo run" in result.stdout
+    assert "does not deploy Rust" in result.stdout
 
 
 def test_cli_init_from_scratch_refuses_nonempty_target(tmp_path):

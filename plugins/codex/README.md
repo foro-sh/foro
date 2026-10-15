@@ -43,7 +43,7 @@ what you want, not by a slash command:
 - **create-foro-project** — scaffold a deployable MCP server. Runs
   `uvx foro init`, explains the generated project (pulling the current
   field list from `foro-docs`), states the two constraints that trip up first
-  deploys (Python or Node, though `foro init` itself only scaffolds Python;
+  deploys (Python or Node — `foro init` scaffolds both, plus a local-only Rust option;
   secrets in the dashboard, never the repo), and finishes with
   `foro check` + `foro dev`, claiming success only on a real local `/mcp`
   response.

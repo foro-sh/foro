@@ -9,7 +9,8 @@ from typer.testing import CliRunner
 
 from foro.check import run_check
 from foro.cli import app
-from foro.dev import run_dev
+from foro.dev import run_dev, stop
+from foro.init import ManifestFields, scaffold_new
 
 runner = CliRunner()
 
@@ -19,6 +20,7 @@ _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 def test_init_output_passes_check_and_serves_via_dev(tmp_path):
     target = tmp_path / "roundtrip-server"
 
+    # name, runtime, runtime_version, port; decline git
     result = runner.invoke(app, ["init", str(target)], input="\n\n\n\nn\n")
     assert result.exit_code == 0, result.stdout
 
@@ -54,3 +56,25 @@ def test_init_output_passes_check_and_serves_via_dev(tmp_path):
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
+
+
+def test_nodejs_scaffold_passes_check_and_serves_via_dev(tmp_path):
+    target = tmp_path / "node-roundtrip"
+    scaffold_new(
+        target,
+        ManifestFields(
+            name="node-roundtrip",
+            entrypoint="server.js",
+            runtime="node",
+            runtime_version="24",
+        ),
+        git_init=False,
+    )
+
+    assert run_check(target).ok
+
+    process, dev_result = run_dev(target, timeout=30)
+    try:
+        assert "add" in dev_result.tool_names
+    finally:
+        stop(process)
