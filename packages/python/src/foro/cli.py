@@ -91,7 +91,8 @@ def main(
     workspace: Optional[str] = typer.Option(
         None,
         "--workspace",
-        help="Workspace (name or id) to act on for this command, overriding the default.",
+        help="Workspace (name or id) to act on, overriding the default. A root "
+        "option: it goes before the subcommand, e.g. `foro --workspace acme deploy`.",
     ),
 ) -> None:
     """foro - the foro.sh Python SDK and CLI."""

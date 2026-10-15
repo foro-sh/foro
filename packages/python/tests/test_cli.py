@@ -504,6 +504,58 @@ def test_global_workspace_flag_resolves_by_name_before_the_api_call(logged_in, m
     assert captured["workspace"] == "w-2"
 
 
+def test_workspace_flag_must_precede_the_subcommand(logged_in):
+    """A root option - Typer/Click parses it only before the subcommand name."""
+    result = runner.invoke(app, ["projects", "--workspace", "acme"])
+
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
+def test_projects_show_ignores_the_directorys_link_when_project_is_overridden(
+    logged_in, tmp_path, monkeypatch
+):
+    import foro.cli as cli_module
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="old-slug", workspace="w-old")
+    )
+    captured = {}
+
+    def fake_get_project(host, token, slug, *, workspace=None):
+        captured["workspace"] = workspace
+        return {"slug": slug, "name": None, "status": "live", "source": "upload", "url": "https://x.foro.sh"}
+
+    monkeypatch.setattr(cli_module, "get_project", fake_get_project)
+    monkeypatch.setattr(cli_module, "list_deployments", lambda host, token, slug, *, workspace=None: [])
+
+    result = runner.invoke(app, ["projects", "show", str(tmp_path), "--project", "other-slug"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] is None
+
+
+def test_open_ignores_the_directorys_link_when_project_is_overridden(logged_in, tmp_path, monkeypatch):
+    import foro.cli as cli_module
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="old-slug", workspace="w-old")
+    )
+    captured = {}
+
+    def fake_get_project(host, token, slug, *, workspace=None):
+        captured["workspace"] = workspace
+        return {"slug": slug, "url": "https://x.foro.sh"}
+
+    monkeypatch.setattr(cli_module, "get_project", fake_get_project)
+    monkeypatch.setattr(cli_module.webbrowser, "open", lambda url: None)
+
+    result = runner.invoke(app, ["open", str(tmp_path), "--project", "other-slug"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] is None
+
+
 def test_bare_projects_list_uses_the_current_directorys_linked_workspace(logged_in, tmp_path, monkeypatch):
     """A linked directory's workspace comes ahead of the stored default,
     even for the bare list (no path argument of its own - uses cwd)."""

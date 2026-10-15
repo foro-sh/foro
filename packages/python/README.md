@@ -90,7 +90,8 @@ A browser approves the code, the CLI polls until you do — the same device flow
   default workspace automatically when you belong to just one, or prompts you
   to pick one when you belong to several. `foro workspace list` shows every
   workspace you belong to; `foro workspace use <name|id>` changes the default.
-  A global `--workspace <name|id>` overrides it for a single command, and a
+  A global `--workspace <name|id>` (before the subcommand, e.g.
+  `foro --workspace acme deploy`) overrides it for a single command, and a
   directory linked by `foro deploy` or `foro link` remembers its own
   workspace ahead of the default.
 - **`foro auth status`** validates against the API rather than reporting that a
@@ -136,7 +137,8 @@ A browser approves the code, the CLI polls until you do — the same device flow
   default workspace automatically when you belong to just one, or prompts you
   to pick one when you belong to several. `foro workspace list` shows every
   workspace you belong to; `foro workspace use <name|id>` changes the default.
-  A global `--workspace <name|id>` overrides it for a single command, and a
+  A global `--workspace <name|id>` (before the subcommand, e.g.
+  `foro --workspace acme deploy`) overrides it for a single command, and a
   directory linked by `foro deploy` or `foro link` remembers its own
   workspace ahead of the default.
 - **`foro auth status`** validates against the API rather than reporting that a
