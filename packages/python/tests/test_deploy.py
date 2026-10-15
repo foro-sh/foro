@@ -156,7 +156,7 @@ class _ApiRecorder:
         self.project = project
         self.calls = []
 
-    def request(self, method, path, *, host, token=None, body=None, timeout=None):
+    def request(self, method, path, *, host, token=None, body=None, timeout=None, workspace=None):
         self.calls.append((method, path))
         if path.startswith("/api/projects/") and path.endswith("/deploy"):
             return {"id": "dep-1", "status": "building"}
@@ -222,6 +222,33 @@ def test_forcing_upload_on_a_github_project_is_refused(tmp_path, recorder):
 
     with pytest.raises(deploy.DeployError, match="no archive to replace"):
         deploy.deploy(tmp_path, "foro.sh", "tok", force_upload=True)
+
+
+def test_creating_a_new_project_persists_the_resolved_workspace(tmp_path, recorder):
+    _project(tmp_path)
+    recorder(UPLOAD_PROJECT)
+
+    deploy.deploy(tmp_path, "foro.sh", "tok", workspace="w-1")
+
+    assert _project_link.load(tmp_path, "foro.sh").workspace == "w-1"
+
+
+def test_the_workspace_is_threaded_into_every_deploy_api_call(tmp_path, monkeypatch):
+    _project(tmp_path)
+    _project_link.save(tmp_path, ProjectLink(host="foro.sh", slug="swift-harbor-a3f2"))
+    captured = []
+
+    def fake_request(method, path, *, host, token=None, body=None, timeout=None, workspace=None):
+        captured.append(workspace)
+        if path.endswith("/deploy"):
+            return {"id": "dep-1", "status": "building"}
+        return GITHUB_PROJECT
+
+    monkeypatch.setattr(deploy._api, "request", fake_request)
+
+    deploy.deploy(tmp_path, "foro.sh", "tok", workspace="w-9")
+
+    assert captured == ["w-9", "w-9"]
 
 
 def test_a_link_for_another_host_is_not_reused(tmp_path):

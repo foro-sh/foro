@@ -10,16 +10,18 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from foro import _config, auth
+from foro import _api, _config, auth
 from foro._api import ApiError
 
 
 class _Handler(BaseHTTPRequestHandler):
     script: list = []
     seen: list = []
+    last_headers: dict = {}
 
     def _respond(self):
         self.seen.append((self.command, self.path))
+        _Handler.last_headers = dict(self.headers)
         status, body = self.script.pop(0)
         raw = json.dumps(body).encode()
         self.send_response(status)
@@ -40,6 +42,7 @@ class _Handler(BaseHTTPRequestHandler):
 def server():
     _Handler.script = []
     _Handler.seen = []
+    _Handler.last_headers = {}
     httpd = HTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield f"127.0.0.1:{httpd.server_port}", _Handler
@@ -171,7 +174,8 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
                 "id": "u-1",
                 "repo_username": None,
                 "email": "dev@example.com",
-                "workspace": {"name": "acme"},
+                "workspace": {"id": "w-1", "name": "acme"},
+                "workspaces": [{"id": "w-1", "name": "acme"}],
             },
         )
     ]
@@ -179,7 +183,74 @@ def test_identity_falls_back_to_email_without_a_repo_username(server):
     identity = auth.fetch_identity(host, "foro_pat_abc")
 
     assert identity.user == "dev@example.com"
-    assert identity.workspace == "acme"
+    assert identity.workspace == auth.WorkspaceRef(id="w-1", name="acme")
+    assert identity.workspaces == [auth.WorkspaceRef(id="w-1", name="acme")]
+
+
+def test_fetch_identity_carries_every_workspace_even_with_none_active(server):
+    """`workspace` is null pre-selection; `workspaces` is the full membership list regardless."""
+    host, handler = server
+    handler.script = [
+        (
+            200,
+            {
+                "email": "dev@example.com",
+                "workspace": None,
+                "workspaces": [
+                    {"id": "w-1", "name": "acme"},
+                    {"id": "w-2", "name": "umbrella"},
+                ],
+            },
+        )
+    ]
+
+    identity = auth.fetch_identity(host, "foro_pat_abc")
+
+    assert identity.workspace is None
+    assert identity.workspaces == [
+        auth.WorkspaceRef(id="w-1", name="acme"),
+        auth.WorkspaceRef(id="w-2", name="umbrella"),
+    ]
+
+
+def test_fetch_identity_skips_malformed_workspace_rows_rather_than_crashing(server):
+    host, handler = server
+    handler.script = [
+        (
+            200,
+            {
+                "email": "dev@example.com",
+                "workspaces": [
+                    {"id": "w-1"},  # no name
+                    {"name": "no-id"},  # no id
+                    "not-a-dict",
+                    {"id": "w-2", "name": "ok"},
+                ],
+            },
+        )
+    ]
+
+    identity = auth.fetch_identity(host, "foro_pat_abc")
+
+    assert identity.workspaces == [auth.WorkspaceRef(id="w-2", name="ok")]
+
+
+def test_list_workspaces_is_fetch_identitys_workspace_list(server):
+    host, handler = server
+    handler.script = [(200, {"email": "dev@example.com", "workspaces": [{"id": "w-1", "name": "acme"}]})]
+
+    assert auth.list_workspaces(host, "foro_pat_abc") == [auth.WorkspaceRef(id="w-1", name="acme")]
+
+
+def test_the_workspace_header_is_sent_only_when_a_workspace_is_resolved(server):
+    host, handler = server
+    handler.script = [(200, {}), (200, {})]
+
+    _api.request("GET", "/x", host=host, token="t", workspace="w-1")
+    assert handler.last_headers.get(_api.WORKSPACE_HEADER) == "w-1"
+
+    _api.request("GET", "/x", host=host, token="t")
+    assert _api.WORKSPACE_HEADER not in handler.last_headers
 
 
 def test_revoke_deletes_the_row_matching_the_token_prefix(server):

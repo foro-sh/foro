@@ -32,9 +32,16 @@ class DeviceGrant:
 
 
 @dataclass
+class WorkspaceRef:
+    id: str
+    name: str
+
+
+@dataclass
 class Identity:
     user: str
-    workspace: str | None
+    workspace: WorkspaceRef | None
+    workspaces: list[WorkspaceRef]
 
 
 def _object(payload, what: str) -> dict:
@@ -126,14 +133,33 @@ def _widened(payload, current: float) -> float:
     return float(sent) if _is_positive_number(sent) else current + SLOW_DOWN_STEP
 
 
+def _workspace_ref(payload) -> WorkspaceRef | None:
+    if not isinstance(payload, dict):
+        return None
+    workspace_id, name = payload.get("id"), payload.get("name")
+    if not isinstance(workspace_id, str) or not workspace_id or not isinstance(name, str) or not name:
+        return None
+    return WorkspaceRef(id=workspace_id, name=name)
+
+
 def fetch_identity(host: str, token: str) -> Identity:
     payload = _object(_api.request("GET", "/api/users/me", host=host, token=token), "/users/me")
     user = payload.get("repo_username") or payload.get("email") or payload.get("id")
     if not isinstance(user, str) or not user:
         raise AuthError("/users/me identified no user - is this a foro.sh instance?")
-    workspace = payload.get("workspace")
-    name = workspace.get("name") if isinstance(workspace, dict) else None
-    return Identity(user=user, workspace=name if isinstance(name, str) else None)
+    raw_workspaces = payload.get("workspaces")
+    workspaces = (
+        [ref for row in raw_workspaces if (ref := _workspace_ref(row)) is not None]
+        if isinstance(raw_workspaces, list)
+        else []
+    )
+    return Identity(user=user, workspace=_workspace_ref(payload.get("workspace")), workspaces=workspaces)
+
+
+def list_workspaces(host: str, token: str) -> list[WorkspaceRef]:
+    """Every workspace the token's user belongs to - `GET /api/workspaces`
+    does not exist; `/users/me` already carries the full list."""
+    return fetch_identity(host, token).workspaces
 
 
 def revoke(host: str, token: str) -> None:

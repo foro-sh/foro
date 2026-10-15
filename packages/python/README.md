@@ -86,9 +86,14 @@ Press Enter to open foro.sh in your browser...
 A browser approves the code, the CLI polls until you do — the same device flow
 `gh auth login` uses, so it works over SSH where a loopback redirect wouldn't.
 
-- **The token is workspace-scoped**, picked when you approve it. Access to a
-  second workspace means logging in again for a second token; there is no
-  workspace-switch command.
+- **The token is user-scoped, not workspace-scoped.** `foro auth login` sets a
+  default workspace automatically when you belong to just one, or prompts you
+  to pick one when you belong to several. `foro workspace list` shows every
+  workspace you belong to; `foro workspace use <name|id>` changes the default.
+  A global `--workspace <name|id>` (before the subcommand, e.g.
+  `foro --workspace acme deploy`) overrides it for a single command, and a
+  directory linked by `foro deploy` or `foro link` remembers its own
+  workspace ahead of the default.
 - **`foro auth status`** validates against the API rather than reporting that a
   file exists, so a revoked token shows as broken. It exits 1 when you aren't
   authenticated, which is what a script should branch on.
@@ -128,9 +133,14 @@ Press Enter to open foro.sh in your browser...
 A browser approves the code, the CLI polls until you do — the same device flow
 `gh auth login` uses, so it works over SSH where a loopback redirect wouldn't.
 
-- **The token is workspace-scoped**, picked when you approve it. Access to a
-  second workspace means logging in again for a second token; there is no
-  workspace-switch command.
+- **The token is user-scoped, not workspace-scoped.** `foro auth login` sets a
+  default workspace automatically when you belong to just one, or prompts you
+  to pick one when you belong to several. `foro workspace list` shows every
+  workspace you belong to; `foro workspace use <name|id>` changes the default.
+  A global `--workspace <name|id>` (before the subcommand, e.g.
+  `foro --workspace acme deploy`) overrides it for a single command, and a
+  directory linked by `foro deploy` or `foro link` remembers its own
+  workspace ahead of the default.
 - **`foro auth status`** validates against the API rather than reporting that a
   file exists, so a revoked token shows as broken. It exits 1 when you aren't
   authenticated, which is what a script should branch on.
@@ -199,7 +209,7 @@ slug would make a fork deploy into someone else's project.
 $ foro logs -f                   # tail the running server
 $ foro logs --build              # raw docker output from the last deploy
 $ foro logs --deploy --json      # the deploy narrative, one JSON object per line
-$ foro projects                  # everything in this token's workspace
+$ foro projects                  # everything in the resolved workspace
 $ foro open                      # the deployed URL, in a browser
 ```
 
