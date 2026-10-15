@@ -398,7 +398,7 @@ def _resolve_workspace_ref(host: str, token: str, query: str) -> auth.WorkspaceR
 def _is_workspace_id(value: str | None) -> bool:
     """Workspace ids are server-generated UUIDs. A pre-#129 CLI stored the
     workspace *name* in this same field, so a stale `hosts.yml` entry must
-    not be sent as a header - it would 403 as `not_a_member` for every
+    not be sent as a header - it would 403 as bare "Forbidden" for every
     command instead of just falling back to the server's own resolution."""
     if not value:
         return False
@@ -410,7 +410,15 @@ def _is_workspace_id(value: str | None) -> bool:
 
 
 def _resolve_workspace(host: str, creds: _config.Credentials, path: Path | None = None) -> str | None:
-    if _workspace_override:
+    """`path` is the directory whose *own* link to consult, if any - pass
+    None when the command targets a project by an explicit slug instead
+    (`--project`, or `link` adopting a new one), so a stale link for
+    whatever project this directory used to point at is never applied to
+    a different one."""
+    if _workspace_override is not None:
+        if not _workspace_override:
+            typer.secho("✗ --workspace cannot be empty", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
         return _resolve_workspace_ref(host, creds.token, _workspace_override).id
     if path is not None:
         link = _project_link.load(path, host)
@@ -685,7 +693,10 @@ def _resolve(path: Path, project: str | None) -> tuple[str, str, str, str | None
     except ProjectError as err:
         typer.secho(f"✗ {err}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from None
-    return host, creds.token, slug, _resolve_workspace(host, creds, path)
+    # An explicit --project may name a slug the directory isn't linked to -
+    # its link's workspace (if any) belongs to a different project then.
+    link_dir = path if project is None else None
+    return host, creds.token, slug, _resolve_workspace(host, creds, link_dir)
 
 
 @app.command()
@@ -703,7 +714,9 @@ def deploy(
         raise typer.Exit(code=1)
 
     host, creds = _require_credentials()
-    workspace = _resolve_workspace(host, creds, path)
+    # --project deploys to a slug the directory may not be linked to; its
+    # link's workspace (if any) would then belong to a different project.
+    workspace = _resolve_workspace(host, creds, path if project is None else None)
 
     if not skip_check and not repo:
         result = run_check(path)
@@ -906,7 +919,9 @@ def link(
 ) -> None:
     """Point this directory at a project created in the dashboard."""
     host, creds = _require_credentials()
-    workspace = _resolve_workspace(host, creds, path)
+    # `link` (re)points `path` at `slug`; any link already there belongs to
+    # whatever project this directory used to track, not this one.
+    workspace = _resolve_workspace(host, creds)
     try:
         row = link_project(path, host, creds.token, slug, workspace=workspace)
     except ApiError as err:

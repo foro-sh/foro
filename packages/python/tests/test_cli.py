@@ -549,6 +549,76 @@ def test_resolve_workspace_ignores_a_pre_129_name_shaped_default(tmp_path):
     assert cli_module._resolve_workspace("foro.sh", creds, tmp_path) is None
 
 
+def test_empty_workspace_flag_is_rejected_loudly(logged_in):
+    """A truthiness check would silently ignore `--workspace ""` (e.g. an
+    unset shell variable) instead of failing loudly."""
+    result = runner.invoke(app, ["--workspace", "", "projects"])
+
+    assert result.exit_code == 1
+    assert "cannot be empty" in result.output
+
+
+def test_resolve_ignores_the_directorys_link_when_project_is_overridden(tmp_path, monkeypatch):
+    """--project may name a slug this directory isn't linked to; the
+    directory's own link then belongs to a different project."""
+    import foro.cli as cli_module
+
+    _project_link.save(tmp_path, _project_link.ProjectLink(host="foro.sh", slug="old-slug", workspace="w-old"))
+    monkeypatch.setattr(
+        cli_module, "_require_credentials", lambda: ("foro.sh", _config.Credentials(token="tok", workspace=None))
+    )
+
+    host, token, slug, workspace = cli_module._resolve(tmp_path, "other-slug")
+
+    assert slug == "other-slug"
+    assert workspace is None
+
+
+def test_deploy_ignores_the_directorys_link_when_project_is_overridden(logged_in, tmp_path, monkeypatch):
+    import foro.cli as cli_module
+    from foro.deploy import Started
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="old-slug", workspace="w-old")
+    )
+    captured = {}
+
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+        captured["workspace"] = workspace
+        return Started(slug=slug or "old-slug", deployment_id="d1", url="https://x.foro.sh", created=False)
+
+    monkeypatch.setattr(cli_module, "deploy_project", fake_deploy_project)
+
+    result = runner.invoke(
+        app, ["deploy", str(tmp_path), "--project", "other-slug", "--detach", "--skip-check"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] is None
+
+
+def test_link_ignores_a_pre_existing_links_workspace_when_repointing(logged_in, tmp_path, monkeypatch):
+    """`link` adopts a new slug for this directory; any link already there
+    is for whatever project it used to track, not this one."""
+    import foro.cli as cli_module
+
+    _project_link.save(
+        tmp_path, _project_link.ProjectLink(host="127.0.0.1:1", slug="old-slug", workspace="w-old")
+    )
+    captured = {}
+
+    def fake_link_project(path, host, token, slug, *, workspace=None):
+        captured["workspace"] = workspace
+        return {"slug": slug, "url": "https://x.foro.sh"}
+
+    monkeypatch.setattr(cli_module, "link_project", fake_link_project)
+
+    result = runner.invoke(app, ["link", "new-slug", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert captured["workspace"] is None
+
+
 def test_workspace_required_is_explained_as_ambiguity_with_several_workspaces(monkeypatch):
     import foro.cli as cli_module
     from foro.auth import WorkspaceRef
