@@ -32,8 +32,11 @@ done
 ```
 
 In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
-instead. A 2xx is saved to `.foro/specs/` already, anything else comes back as
-an error naming the status.
+instead. A 2xx is saved to `.foro/specs/` already, whatever its type, so check
+the `contentType` it returns; anything else comes back as an error naming the
+status. `fetch_url` sends no headers, so a request that needs one (the key, an
+`Accept`) goes through `run_command` with the interpreter instead:
+`urllib.request` in `python3`, `fetch` in `node`.
 
 Try the host root too, not only the versioned base. Then read the codes:
 
@@ -44,7 +47,8 @@ Try the host root too, not only the versioned base. Then read the codes:
 - **404**: not there.
 
 The empty path is the landing document. OGC APIs such as EDR link their spec
-from it: follow the link with `"rel": "service-desc"`.
+from it: follow the link with `"rel": "service-desc"`. Add `?f=json` if the
+landing document comes back as HTML.
 
 ## 2. No spec: ask for the reference docs
 
@@ -65,20 +69,25 @@ samples didn't show (errors, pagination, optional fields) is a guess until seen.
 
 Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
 `.foro/specs/` (add `.foro/` to `.gitignore` if it isn't there) and pull out
-only what the next decision needs. YAML only? Convert it to JSON once.
+only what the next decision needs. YAML only? Convert it to JSON once, since
+neither interpreter reads YAML on its own:
+`uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout)' api.yaml > api.json`
+or `npx -y js-yaml api.yaml > api.json`.
 
 - **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
 - **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
 
 Query it with the project's own interpreter. It's there locally and in the
 builder's dev container; `jq` and `curl` aren't in the container, and `jq`
-may not be on a developer's machine either.
+may not be on a developer's machine either. Every builder command runs in a
+fresh shell, so set `spec` to the path `fetch_url` returned in the same
+command as the query.
 
 ```bash
 spec=.foro/specs/api.json
 
-# servers and auth
-python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(json.dumps({"servers": s.get("servers"), "security": s.get("security"), "schemes": s.get("components", {}).get("securitySchemes")}, indent=2))' "$spec"
+# servers and auth (host, basePath and securityDefinitions are Swagger 2's)
+python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(json.dumps({k: v for k, v in s.items() if k in ("servers", "host", "basePath", "schemes", "security", "securityDefinitions")} | {"securitySchemes": s.get("components", {}).get("securitySchemes")}, indent=2))' "$spec"
 
 # every operation, one line each: grep this list, don't read it
 python3 -c 'import json,sys
@@ -94,7 +103,7 @@ python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["comp
 The same in a Node project:
 
 ```bash
-node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(JSON.stringify({servers: s.servers, security: s.security, schemes: s.components?.securitySchemes}, null, 2))' "$spec"
+node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(JSON.stringify({...Object.fromEntries(Object.entries(s).filter(([k]) => ["servers", "host", "basePath", "schemes", "security", "securityDefinitions"].includes(k))), securitySchemes: s.components?.securitySchemes}, null, 2))' "$spec"
 
 node -e 'for (const [p, ops] of Object.entries(JSON.parse(require("fs").readFileSync(process.argv[1])).paths))
   for (const [m, op] of Object.entries(ops))
