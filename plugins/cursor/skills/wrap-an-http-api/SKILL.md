@@ -39,8 +39,20 @@ Try the host root too, not only the versioned base. Then read the codes:
   everything else; others lock the spec too.
 - **404**: not there.
 
+In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
+instead. A 2xx is saved to `.foro/specs/` already, whatever its type, so check
+the `contentType` it returns; anything else comes back as an error naming the
+status. It sends no custom headers, so a request that needs an `Accept` goes
+through `run_command` with the interpreter (`urllib.request` in `python3`,
+`fetch` in `node`), writing the body to `.foro/specs/` rather than printing it.
+Builder commands get no secrets, so on a 401 or 403 ask the user for the spec
+file or the docs (step 2): a deployed tool can reach it with the key, but its
+output is capped far below a whole spec. Never write the key into the
+workspace, where a commit would carry it.
+
 The empty path is the landing document. OGC APIs such as EDR link their spec
-from it: follow the link with `"rel": "service-desc"`.
+from it: follow the link with `"rel": "service-desc"`. Add `?f=json` if the
+landing document comes back as HTML.
 
 ## 2. No spec: ask for the reference docs
 
@@ -57,28 +69,64 @@ read the shape off the response. Tell the user plainly that this is what's
 happening: the contract is being inferred from live responses, so anything the
 samples didn't show (errors, pagination, optional fields) is a guess until seen.
 
-## 4. Query the spec with jq, never read it whole
+In the foro.sh builder the key never reaches a command. Name it with
+`declare_env` and have the user fill it in on the Secrets tab, deploy a tool
+that makes the one request and returns a trimmed sample of the response, and
+call it with `call_own_tool`, whose output is capped. Delete that tool once the
+shape is known: it hands any client raw upstream access under the user's key.
+
+## 4. Query the spec, never read it whole
 
 Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
-`.foro/specs/` (add `.foro/` to `.gitignore` if it isn't there) and pull out
-only what the next decision needs. YAML only? Convert it to JSON once.
+`.foro/specs/` (locally, add `.foro/` to `.gitignore` if it isn't there; the
+builder never commits it) and pull out only what the next decision needs.
+
+- **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
+- **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
+
+YAML only? Convert it to JSON once, since neither interpreter reads YAML on
+its own (use the path the spec was saved to):
+`uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout, default=str)' .foro/specs/api.yaml > .foro/specs/api.json`
+or `npx -y js-yaml .foro/specs/api.yaml > .foro/specs/api.json`.
+
+Query it with the project's own interpreter. It's there locally and in the
+builder's dev container; `jq` and `curl` aren't in the container, and `jq`
+may not be on a developer's machine either. Every builder command runs in a
+fresh shell, so set `spec` to the path `fetch_url` returned in the same
+command as the query.
 
 ```bash
-mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json
 spec=.foro/specs/api.json
 
-# servers and auth
-jq '{servers, security, schemes: .components.securitySchemes}' "$spec"
+# servers and auth (host, basePath and securityDefinitions are Swagger 2's)
+python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(json.dumps({k: v for k, v in s.items() if k in ("servers", "host", "basePath", "schemes", "security", "securityDefinitions")} | {"securitySchemes": s.get("components", {}).get("securitySchemes")}, indent=2))' "$spec"
 
-# every operation, one line each: grep this list, don't read it
-jq -r '.paths | to_entries[] | .key as $p | .value | to_entries[]
-  | select(.key | IN("get","post","put","patch","delete"))
-  | "\(.key | ascii_upcase) \($p)  \(.value.summary // "")"' "$spec"
+# every operation, one line each: grep this list, don't read it (append | grep -i <word>)
+python3 -c 'import json,sys
+for p, ops in json.load(open(sys.argv[1]))["paths"].items():
+    for m, op in ops.items():
+        if m in ("get", "post", "put", "patch", "delete"): print(m.upper(), p, "", op.get("summary", ""))' "$spec"
 
-# one operation in full, then a schema it references (Swagger 2: .definitions)
-jq '.paths["/items/{id}"].get' "$spec"
-jq '.components.schemas.Item' "$spec"
+# one operation in full, then a schema it references (Swagger 2: "definitions")
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["paths"]["/items/{id}"]["get"], indent=2))' "$spec"
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["components"]["schemas"]["Item"], indent=2))' "$spec"
 ```
+
+The same in a Node project:
+
+```bash
+node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(JSON.stringify({...Object.fromEntries(Object.entries(s).filter(([k]) => ["servers", "host", "basePath", "schemes", "security", "securityDefinitions"].includes(k))), securitySchemes: s.components?.securitySchemes}, null, 2))' "$spec"
+
+node -e 'for (const [p, ops] of Object.entries(JSON.parse(require("fs").readFileSync(process.argv[1])).paths))
+  for (const [m, op] of Object.entries(ops))
+    if (["get", "post", "put", "patch", "delete"].includes(m)) console.log(`${m.toUpperCase()} ${p}  ${op.summary ?? ""}`)' "$spec"
+
+node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])).paths["/items/{id}"].get, null, 2))' "$spec"
+node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])).components.schemas.Item, null, 2))' "$spec"
+```
+
+Where `jq` is installed it does the same in less typing, e.g.
+`jq '.paths["/items/{id}"].get' "$spec"`.
 
 ## 5. Wire it up
 
@@ -92,5 +140,6 @@ jq '.components.schemas.Item' "$spec"
 
 - Every path, parameter and header the tools send can be pointed to in
   `.foro/specs/` or in a response you saw.
-- Each tool has returned real data from the real API at least once, locally,
-  with the real key. A tool that has only ever been listed is untested.
+- Each tool has returned real data from the real API at least once with the
+  real key: locally, or in the foro.sh builder through `call_own_tool` against
+  the deploy. A tool that has only ever been listed is untested.

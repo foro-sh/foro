@@ -77,8 +77,9 @@ Skills are namespaced by the plugin name:
 - **`/foro:wrap-an-http-api`** — build tools on an existing API from its real
   contract. A client written from memory deploys green and 404s on every call,
   so it finds the API's own spec first (`/openapi.json` and friends), falls
-  back to pasted docs, then to probing the live API, and queries specs with
-  `jq` from `.foro/specs/` instead of reading them whole.
+  back to pasted docs, then to probing the live API, and queries specs with the
+  project's own `python3` or `node` from `.foro/specs/` instead of reading them
+  whole.
 
 ## Requirements
 
