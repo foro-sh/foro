@@ -45,9 +45,10 @@ the `contentType` it returns; anything else comes back as an error naming the
 status. It sends no custom headers, so a request that needs an `Accept` goes
 through `run_command` with the interpreter (`urllib.request` in `python3`,
 `fetch` in `node`), writing the body to `.foro/specs/` rather than printing it.
-Builder commands get no secrets, so there is no key to retry a 401 or 403
-with: ask the user for the spec or the docs (step 2), and never write the key
-into the workspace, where a commit would carry it.
+Builder commands get no secrets, so a 401 or 403 is retried through a
+deployed tool (step 3) or answered by asking the user for the spec or docs
+(step 2). Never write the key into the workspace, where a commit would carry
+it.
 
 The empty path is the landing document. OGC APIs such as EDR link their spec
 from it: follow the link with `"rel": "service-desc"`. Add `?f=json` if the
@@ -68,22 +69,25 @@ read the shape off the response. Tell the user plainly that this is what's
 happening: the contract is being inferred from live responses, so anything the
 samples didn't show (errors, pagination, optional fields) is a guess until seen.
 
-In the foro.sh builder the key never reaches a command. Have the user set it
-in the dashboard's Secrets tab, deploy a tool that makes the one request and
-returns the raw response, and call it with `call_own_tool`.
+In the foro.sh builder the key never reaches a command. Name it with
+`declare_env` and have the user fill it in on the Secrets tab, deploy a tool
+that makes the one request and returns a trimmed sample of the response, and
+call it with `call_own_tool`, whose output is capped and PII-scrubbed. Delete that tool once the shape is known: it hands any client
+raw upstream access under the user's key.
 
 ## 4. Query the spec, never read it whole
 
 Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
 `.foro/specs/` (locally, add `.foro/` to `.gitignore` if it isn't there; the
 builder never commits it) and pull out only what the next decision needs.
+
+- **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
+- **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
+
 YAML only? Convert it to JSON once, since neither interpreter reads YAML on
 its own (use the path the spec was saved to):
 `uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout, default=str)' .foro/specs/api.yaml > .foro/specs/api.json`
 or `npx -y js-yaml .foro/specs/api.yaml > .foro/specs/api.json`.
-
-- **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
-- **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
 
 Query it with the project's own interpreter. It's there locally and in the
 builder's dev container; `jq` and `curl` aren't in the container, and `jq`
@@ -97,7 +101,7 @@ spec=.foro/specs/api.json
 # servers and auth (host, basePath and securityDefinitions are Swagger 2's)
 python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(json.dumps({k: v for k, v in s.items() if k in ("servers", "host", "basePath", "schemes", "security", "securityDefinitions")} | {"securitySchemes": s.get("components", {}).get("securitySchemes")}, indent=2))' "$spec"
 
-# every operation, one line each: grep this list, don't read it
+# every operation, one line each: grep this list, don't read it (append | grep -i <word>)
 python3 -c 'import json,sys
 for p, ops in json.load(open(sys.argv[1]))["paths"].items():
     for m, op in ops.items():
@@ -136,5 +140,6 @@ Where `jq` is installed it does the same in less typing, e.g.
 
 - Every path, parameter and header the tools send can be pointed to in
   `.foro/specs/` or in a response you saw.
-- Each tool has returned real data from the real API at least once, locally,
-  with the real key. A tool that has only ever been listed is untested.
+- Each tool has returned real data from the real API at least once with the
+  real key: locally, or in the foro.sh builder through `call_own_tool` against
+  the deploy. A tool that has only ever been listed is untested.
