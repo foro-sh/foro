@@ -45,10 +45,10 @@ the `contentType` it returns; anything else comes back as an error naming the
 status. It sends no custom headers, so a request that needs an `Accept` goes
 through `run_command` with the interpreter (`urllib.request` in `python3`,
 `fetch` in `node`), writing the body to `.foro/specs/` rather than printing it.
-Builder commands get no secrets, so a 401 or 403 is retried through a
-deployed tool (step 3) or answered by asking the user for the spec or docs
-(step 2). Never write the key into the workspace, where a commit would carry
-it.
+Builder commands get no secrets, so on a 401 or 403 ask the user for the spec
+file or the docs (step 2): a deployed tool can reach it with the key, but its
+output is capped far below a whole spec. Never write the key into the
+workspace, where a commit would carry it.
 
 The empty path is the landing document. OGC APIs such as EDR link their spec
 from it: follow the link with `"rel": "service-desc"`. Add `?f=json` if the
@@ -72,8 +72,8 @@ samples didn't show (errors, pagination, optional fields) is a guess until seen.
 In the foro.sh builder the key never reaches a command. Name it with
 `declare_env` and have the user fill it in on the Secrets tab, deploy a tool
 that makes the one request and returns a trimmed sample of the response, and
-call it with `call_own_tool`, whose output is capped and PII-scrubbed. Delete that tool once the shape is known: it hands any client
-raw upstream access under the user's key.
+call it with `call_own_tool`, whose output is capped. Delete that tool once the
+shape is known: it hands any client raw upstream access under the user's key.
 
 ## 4. Query the spec, never read it whole
 
