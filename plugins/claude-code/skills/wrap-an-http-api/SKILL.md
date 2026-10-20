@@ -34,9 +34,11 @@ done
 In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
 instead. A 2xx is saved to `.foro/specs/` already, whatever its type, so check
 the `contentType` it returns; anything else comes back as an error naming the
-status. `fetch_url` sends no headers, so a request that needs one (the key, an
-`Accept`) goes through `run_command` with the interpreter instead:
-`urllib.request` in `python3`, `fetch` in `node`.
+status. `fetch_url` sends no headers, so one that needs an `Accept` goes
+through `run_command` with the interpreter instead: `urllib.request` in
+`python3`, `fetch` in `node`. Builder commands get no secrets, so there is no
+key to retry a 401 or 403 with: ask the user for the spec or the docs (step 2),
+and never write the key into the workspace, where a commit would carry it.
 
 Try the host root too, not only the versioned base. Then read the codes:
 
@@ -71,8 +73,8 @@ Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
 `.foro/specs/` (add `.foro/` to `.gitignore` if it isn't there) and pull out
 only what the next decision needs. YAML only? Convert it to JSON once, since
 neither interpreter reads YAML on its own:
-`uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout)' api.yaml > api.json`
-or `npx -y js-yaml api.yaml > api.json`.
+`uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout, default=str)' .foro/specs/api.yaml > .foro/specs/api.json`
+or `npx -y js-yaml .foro/specs/api.yaml > .foro/specs/api.json`.
 
 - **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
 - **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
