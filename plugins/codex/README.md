@@ -69,8 +69,9 @@ what you want, not by a slash command:
 - **wrap-an-http-api** — build tools on an existing API from its real contract.
   A client written from memory deploys green and 404s on every call, so it
   finds the API's own spec first (`/openapi.json` and friends), falls back to
-  pasted docs, then to probing the live API, and queries specs with `jq` from
-  `.foro/specs/` instead of reading them whole.
+  pasted docs, then to probing the live API, and queries specs with the
+  project's own `python3` or `node` from `.foro/specs/` instead of reading
+  them whole.
 
 All `SKILL.md` files are byte-identical to the Claude Code plugin's, and CI
 fails if they drift. `plugins/claude-code/skills/` is the canonical copy.
