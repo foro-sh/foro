@@ -31,6 +31,10 @@ for p in openapi.json swagger.json openapi.yaml v3/api-docs .well-known/api-cata
 done
 ```
 
+In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
+instead. A 2xx is saved to `.foro/specs/` already, anything else comes back as
+an error naming the status.
+
 Try the host root too, not only the versioned base. Then read the codes:
 
 - **200 with JSON or YAML**: that's the spec. Save it (step 4).
@@ -57,28 +61,51 @@ read the shape off the response. Tell the user plainly that this is what's
 happening: the contract is being inferred from live responses, so anything the
 samples didn't show (errors, pagination, optional fields) is a guess until seen.
 
-## 4. Query the spec with jq, never read it whole
+## 4. Query the spec, never read it whole
 
 Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
 `.foro/specs/` (add `.foro/` to `.gitignore` if it isn't there) and pull out
 only what the next decision needs. YAML only? Convert it to JSON once.
 
+- **In the foro.sh builder:** `fetch_url` saves it there and returns the path.
+- **Locally:** `mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json`
+
+Query it with the project's own interpreter. It's there locally and in the
+builder's dev container; `jq` and `curl` aren't in the container, and `jq`
+may not be on a developer's machine either.
+
 ```bash
-mkdir -p .foro/specs && curl -fsS "$base/openapi.json" -o .foro/specs/api.json
 spec=.foro/specs/api.json
 
 # servers and auth
-jq '{servers, security, schemes: .components.securitySchemes}' "$spec"
+python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(json.dumps({"servers": s.get("servers"), "security": s.get("security"), "schemes": s.get("components", {}).get("securitySchemes")}, indent=2))' "$spec"
 
 # every operation, one line each: grep this list, don't read it
-jq -r '.paths | to_entries[] | .key as $p | .value | to_entries[]
-  | select(.key | IN("get","post","put","patch","delete"))
-  | "\(.key | ascii_upcase) \($p)  \(.value.summary // "")"' "$spec"
+python3 -c 'import json,sys
+for p, ops in json.load(open(sys.argv[1]))["paths"].items():
+    for m, op in ops.items():
+        if m in ("get", "post", "put", "patch", "delete"): print(m.upper(), p, "", op.get("summary", ""))' "$spec"
 
-# one operation in full, then a schema it references (Swagger 2: .definitions)
-jq '.paths["/items/{id}"].get' "$spec"
-jq '.components.schemas.Item' "$spec"
+# one operation in full, then a schema it references (Swagger 2: "definitions")
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["paths"]["/items/{id}"]["get"], indent=2))' "$spec"
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["components"]["schemas"]["Item"], indent=2))' "$spec"
 ```
+
+The same in a Node project:
+
+```bash
+node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(JSON.stringify({servers: s.servers, security: s.security, schemes: s.components?.securitySchemes}, null, 2))' "$spec"
+
+node -e 'for (const [p, ops] of Object.entries(JSON.parse(require("fs").readFileSync(process.argv[1])).paths))
+  for (const [m, op] of Object.entries(ops))
+    if (["get", "post", "put", "patch", "delete"].includes(m)) console.log(`${m.toUpperCase()} ${p}  ${op.summary ?? ""}`)' "$spec"
+
+node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])).paths["/items/{id}"].get, null, 2))' "$spec"
+node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1])).components.schemas.Item, null, 2))' "$spec"
+```
+
+Where `jq` is installed it does the same in less typing, e.g.
+`jq '.paths["/items/{id}"].get' "$spec"`.
 
 ## 5. Wire it up
 
