@@ -7,6 +7,37 @@
 * docs(python): document foro dev inspector ([ec9784e](https://github.com/foro-sh/foro/commit/ec9784e))
 * feat(python): launch MCP Inspector from foro dev ([01653b9](https://github.com/foro-sh/foro/commit/01653b9))
 
+## [0.18.0](https://github.com/foro-sh/foro/compare/v0.17.0...v0.18.0) (2026-10-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **python:** `auth.Identity.workspace` is now a `WorkspaceRef` (id + name) instead of a display-only name string, and `_config.Credentials.workspace` stores a workspace id instead of a name. `GET /api/workspaces` does not exist server-side; workspace listing goes through `GET /api/users/me` instead.
+
+### Features
+
+* **plugin:** add the foro Cursor plugin ([fb7c5b5](https://github.com/foro-sh/foro/commit/fb7c5b520646ccf230f0fbaa284e07e29ae21f61))
+* **plugin:** add the foro Cursor plugin ([c72bb5c](https://github.com/foro-sh/foro/commit/c72bb5ca103a235acf4758a012b79eacc1969380))
+* **python:** resolve workspace per command, not per token ([6dc1fa7](https://github.com/foro-sh/foro/commit/6dc1fa7a2cf5a05fcbe5897b347c900c41fce2bd)), closes [#129](https://github.com/foro-sh/foro/issues/129)
+
+
+### Bug Fixes
+
+* **python:** don't send a pre-[#129](https://github.com/foro-sh/foro/issues/129) name as a workspace header ([35a21ca](https://github.com/foro-sh/foro/commit/35a21caf9b3a950e768f63b2d3bc65a1a722cc9b))
+* **python:** install pytest as a dev dependency in foro init scaffolds ([bb1c5c5](https://github.com/foro-sh/foro/commit/bb1c5c58d31c52a3376d421a9c97c32a5400f768))
+* **python:** install pytest as a dev dependency in foro init scaffolds ([761cd00](https://github.com/foro-sh/foro/commit/761cd000503e1f75c5e95fa547fe93de4e77535d))
+* **python:** match on slug, not presence of --project, for a link ([1e7895e](https://github.com/foro-sh/foro/commit/1e7895e9f27cf538f5c76e94d5318ae5a354c11e))
+* **python:** print the /mcp endpoint on foro deploy success ([c179f98](https://github.com/foro-sh/foro/commit/c179f98d938809f15921617a2592a87b1c194f14))
+* **python:** print the /mcp endpoint on foro deploy success ([a38977c](https://github.com/foro-sh/foro/commit/a38977c6e71fceadae360bc270b41b5012faf5e6))
+* **python:** stop reusing a directory's link for a different project ([b9ca46d](https://github.com/foro-sh/foro/commit/b9ca46dffc6ead4c29a0beb47770302d71951a58))
+* **skills:** cover fetch_url's limits and Swagger 2 in spec queries ([2502bd2](https://github.com/foro-sh/foro/commit/2502bd268b8d5478fc7ce46543314986b35606b4))
+* **skills:** give builder steps for authed probes and live probing ([5dfbc67](https://github.com/foro-sh/foro/commit/5dfbc67161e79a78d3c6d225bfa5d610f03a5c5c))
+* **skills:** keep the API key out of builder commands ([3340c76](https://github.com/foro-sh/foro/commit/3340c768a4171b44fade7d223959e2f14201139c))
+* **skills:** make the builder probe path complete and safe ([0de44c1](https://github.com/foro-sh/foro/commit/0de44c1ab0c49dba647368c8b71f0bc26d5d1bf7))
+* **skills:** query specs with the project's interpreter, not jq ([de1844e](https://github.com/foro-sh/foro/commit/de1844e8c883789aaa1828df379b894a85cf9c1f))
+* **skills:** query specs without curl or jq in wrap-an-http-api ([17beff3](https://github.com/foro-sh/foro/commit/17beff394845be00590a5ed0c76b5f7408f973f7))
+* **skills:** send an auth-locked spec in the builder to step 2 ([d7fced6](https://github.com/foro-sh/foro/commit/d7fced671d20fb22387a867024730bd0a57af1b9))
+
 ## 0.16.0 (2026-09-30)
 
 * feat(python)!: move to mcp 2.x and fastmcp 4 ([38f4e94](https://github.com/foro-sh/foro/commit/38f4e94))
