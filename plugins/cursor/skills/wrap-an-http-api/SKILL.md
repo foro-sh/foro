@@ -31,15 +31,6 @@ for p in openapi.json swagger.json openapi.yaml v3/api-docs .well-known/api-cata
 done
 ```
 
-In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
-instead. A 2xx is saved to `.foro/specs/` already, whatever its type, so check
-the `contentType` it returns; anything else comes back as an error naming the
-status. `fetch_url` sends no headers, so one that needs an `Accept` goes
-through `run_command` with the interpreter instead: `urllib.request` in
-`python3`, `fetch` in `node`. Builder commands get no secrets, so there is no
-key to retry a 401 or 403 with: ask the user for the spec or the docs (step 2),
-and never write the key into the workspace, where a commit would carry it.
-
 Try the host root too, not only the versioned base. Then read the codes:
 
 - **200 with JSON or YAML**: that's the spec. Save it (step 4).
@@ -47,6 +38,16 @@ Try the host root too, not only the versioned base. Then read the codes:
   concluding there's no spec. Some APIs serve the spec openly and lock
   everything else; others lock the spec too.
 - **404**: not there.
+
+In the foro.sh builder there is no `curl`: call `fetch_url` on each candidate
+instead. A 2xx is saved to `.foro/specs/` already, whatever its type, so check
+the `contentType` it returns; anything else comes back as an error naming the
+status. It sends no custom headers, so a request that needs an `Accept` goes
+through `run_command` with the interpreter (`urllib.request` in `python3`,
+`fetch` in `node`), writing the body to `.foro/specs/` rather than printing it.
+Builder commands get no secrets, so there is no key to retry a 401 or 403
+with: ask the user for the spec or the docs (step 2), and never write the key
+into the workspace, where a commit would carry it.
 
 The empty path is the landing document. OGC APIs such as EDR link their spec
 from it: follow the link with `"rel": "service-desc"`. Add `?f=json` if the
@@ -67,12 +68,17 @@ read the shape off the response. Tell the user plainly that this is what's
 happening: the contract is being inferred from live responses, so anything the
 samples didn't show (errors, pagination, optional fields) is a guess until seen.
 
+In the foro.sh builder the key never reaches a command. Have the user set it
+in the dashboard's Secrets tab, deploy a tool that makes the one request and
+returns the raw response, and call it with `call_own_tool`.
+
 ## 4. Query the spec, never read it whole
 
 Specs are big: KNMI's EDR spec is over half a megabyte. Save it under
-`.foro/specs/` (add `.foro/` to `.gitignore` if it isn't there) and pull out
-only what the next decision needs. YAML only? Convert it to JSON once, since
-neither interpreter reads YAML on its own:
+`.foro/specs/` (locally, add `.foro/` to `.gitignore` if it isn't there; the
+builder never commits it) and pull out only what the next decision needs.
+YAML only? Convert it to JSON once, since neither interpreter reads YAML on
+its own (use the path the spec was saved to):
 `uv run --no-project --with pyyaml python -c 'import json,sys,yaml; json.dump(yaml.safe_load(open(sys.argv[1])), sys.stdout, default=str)' .foro/specs/api.yaml > .foro/specs/api.json`
 or `npx -y js-yaml .foro/specs/api.yaml > .foro/specs/api.json`.
 
