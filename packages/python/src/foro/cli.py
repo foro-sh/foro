@@ -834,7 +834,10 @@ def logs(
         None, "--minutes", min=1, help="Read this many minutes back from --until."
     ),
     until: Optional[datetime] = typer.Option(
-        None, "--until", help="End of the window (ISO-8601, default: now)."
+        None,
+        "--until",
+        formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"],
+        help="End of the window (ISO-8601, default: now; no offset means local time).",
     ),
     contains: Optional[str] = typer.Option(
         None, "--contains", help="Keep only lines containing this text (case-insensitive)."
@@ -849,6 +852,12 @@ def logs(
     if sum([deploy_log, build_log, follow, summary]) > 1:
         typer.secho(
             "✗ --deploy, --build, --follow and --summary are mutually exclusive",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    if (minutes or until or contains) and (deploy_log or build_log or follow or summary):
+        typer.secho(
+            "✗ --minutes, --until and --contains only filter stored runtime logs",
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
