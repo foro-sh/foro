@@ -38,9 +38,9 @@ def without(monkeypatch):
     return hide
 
 
-def _project(tmp_path: Path) -> Path:
+def _project(tmp_path: Path, port: int = 8000) -> Path:
     (tmp_path / "server.py").write_text("# mcp server\n")
-    (tmp_path / "pyproject.toml").write_text('[project]\nname = "my-server"\n')
+    (tmp_path / "pyproject.toml").write_text(f'[project]\nname = "my-server"\n\n[tool.foro]\nport = {port}\n')
     (tmp_path / "uv.lock").write_text("version = 1\n")
     return tmp_path
 
@@ -64,21 +64,21 @@ def test_check_cli_prints_the_warning_and_exits_zero(tmp_path, without):
     assert "docs.astral.sh/uv" in result.stdout
 
 
-def test_dev_without_uv_names_uv_rather_than_an_errno(tmp_path, without):
+def test_dev_without_uv_names_uv_rather_than_an_errno(tmp_path, without, free_port):
     without("uv")
 
-    result = runner.invoke(app, ["dev", str(_project(tmp_path))])
+    result = runner.invoke(app, ["dev", str(_project(tmp_path, free_port))])
 
     assert result.exit_code == 1
     assert "`uv` is not installed" in result.stdout
     assert "FileNotFoundError" not in result.stdout
 
 
-def test_run_dev_raises_a_typed_error_rather_than_oserror(tmp_path, without):
+def test_run_dev_raises_a_typed_error_rather_than_oserror(tmp_path, without, free_port):
     without("uv")
 
     with pytest.raises(_proc.MissingToolError):
-        run_dev(_project(tmp_path))
+        run_dev(_project(tmp_path, free_port))
 
 
 def test_scaffold_without_uv_leaves_nothing_behind(tmp_path, without):

@@ -13,7 +13,7 @@ from foro.dev import DevError, run_dev, start_server, stop
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def test_run_dev_succeeds_against_a_real_foro_run_server(tmp_path):
+def test_run_dev_succeeds_against_a_real_foro_run_server(tmp_path, free_port):
     project = tmp_path / "minimal-fastmcp"
     shutil.copytree(FIXTURES / "minimal-fastmcp", project)
 
@@ -21,19 +21,26 @@ def test_run_dev_succeeds_against_a_real_foro_run_server(tmp_path):
     for name in ("pyproject.toml", "uv.lock"):
         target = project / name
         target.write_text(target.read_text().replace("../../..", str(packages_python)))
+    with open(project / "pyproject.toml", "a") as f:
+        f.write(f"\n[tool.foro]\nport = {free_port}\n")
 
     process, result = run_dev(project, timeout=20)
     try:
-        assert result.port == 8000
+        assert result.port == free_port
         assert "add" in result.tool_names
     finally:
         stop(process)
 
 
-def test_run_dev_raises_on_stdio_only_server():
+def test_run_dev_raises_on_stdio_only_server(tmp_path, free_port):
     """stdio transport never opens a port. stdin is DEVNULL so it exits."""
+    project = tmp_path / "stdio-only"
+    shutil.copytree(FIXTURES / "stdio-only", project)
+    with open(project / "pyproject.toml", "a") as f:
+        f.write(f"\n[tool.foro]\nport = {free_port}\n")
+
     with pytest.raises(DevError, match="foro.run"):
-        run_dev(FIXTURES / "stdio-only", timeout=5)
+        run_dev(project, timeout=5)
 
 
 def _dead_on_arrival(tmp_path, port, exit_code=3):
