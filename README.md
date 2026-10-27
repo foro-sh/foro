@@ -57,8 +57,13 @@ tooling it never runs.
 | `foro verify <url>` | Open a session against a deployed URL and list its tools |
 | `foro auth` | `login`, `status`, `logout`, `token` for [foro.sh](https://foro.sh) |
 | `foro deploy [path]` | Ship the directory to foro.sh and stream the build |
-| `foro logs [path]` | Read runtime, build or deploy logs (`-f` to follow) |
-| `foro projects` | List your foro.sh projects |
+| `foro logs [path]` | Read runtime, build or deploy logs (`-f` to follow, `--contains` to search, `--summary` to digest) |
+| `foro projects` | List, show or create projects, and turn auto-deploy on or off |
+| `foro deployments` | List deployments or show one; `foro rollback` and `foro cancel` act on them |
+| `foro workspace` | List, switch, create or rename workspaces |
+| `foro templates` / `foro repos` | What a new project can start from |
+| `foro metrics` / `usage` / `sessions` / `incidents` | How a deployed server is used and how it is doing |
+| `foro scan` / `readiness` / `connect` | Dependency CVEs, store-listing checks, and how to add the server to a client |
 
 `init`, `check` and `dev` are local and need no account.
 
