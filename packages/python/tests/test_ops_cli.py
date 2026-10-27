@@ -34,6 +34,8 @@ def api(monkeypatch):
 
     def request(method, path, *, host, token=None, body=None, timeout=None, workspace=None):
         calls.append((method, path, workspace, body))
+        if path.startswith("/api/projects/p/logs?from="):
+            return {"lines": [{"line": "windowed"}]}
         return answers[(method, path)]
 
     monkeypatch.setattr(_api, "request", request)
@@ -68,3 +70,9 @@ def test_contains_is_sent_as_one_escaped_phrase(logged_in, api):
     result = runner.invoke(app, ["logs", "--project", "p", "--contains", 'a"b'])
     assert result.exit_code == 0, result.stdout
     assert result.stdout == "hit\n"
+
+
+def test_until_takes_a_utc_offset(logged_in, api):
+    result = runner.invoke(app, ["logs", "--project", "p", "--until", "2026-10-27T10:00:00Z"])
+    assert result.exit_code == 0, result.stdout
+    assert "from=2026-10-27T09%3A00%3A00%2B00%3A00&to=2026-10-27T10%3A00%3A00%2B00%3A00" in api[-1][1]
