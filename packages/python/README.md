@@ -51,6 +51,18 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | `foro projects [show]` | List your projects, or show the one this directory is linked to |
 | `foro link <slug>` / `foro unlink` | Adopt a project created in the dashboard, or forget the link |
 | `foro open` | Open the deployed URL in a browser |
+| `foro deployments [show]` | List a project's deployments, or show one's status, error and resolve prompt |
+| `foro rollback <deployment>` / `foro cancel` | Redeploy an earlier deployment's commit, or stop one still building |
+| `foro projects create` | Create a project from a template (`--template --name`) or a repo (`--repo --branch`) |
+| `foro projects auto-deploy <on\|off>` | Deploy on every push to a repo project's branch, or only on request |
+| `foro templates` / `foro repos` | What `foro projects create` can start from |
+| `foro workspace <list\|use\|create\|rename>` | See, switch, create or rename workspaces |
+| `foro metrics` / `foro usage` / `foro sessions [id]` | Calls, errors and latency; callers by client and the plan cap; per-session call traces |
+| `foro incidents` | Recent alert incidents in the workspace |
+| `foro scan` / `foro readiness` | Known CVEs in the project's dependencies; what the ChatGPT, Claude, registry and Cursor listings would flag |
+| `foro connect` | The MCP URL and how to add it to ChatGPT, Claude or Cursor |
+
+`foro logs` also takes `--minutes`, `--until`, `--contains` and `--summary`; `foro deploy` takes `--ref` to build another branch or tag. Read commands take `--json`.
 
 `foro check` mirrors the platform's own validation rule for rule, so a repo
 it passes will deploy and one it flags will not — the same reason code,
