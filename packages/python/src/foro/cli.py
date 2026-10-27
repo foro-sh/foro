@@ -1181,3 +1181,107 @@ def projects_auto_deploy(
         workspace=workspace, body={"auto_deploy": state == "on"},
     )
     typer.secho(f"✓ auto-deploy is {state} for {slug}", fg=typer.colors.GREEN)
+
+
+@projects_app.command("create")
+def projects_create(
+    template: Optional[str] = typer.Option(None, "--template", help="Template id (`foro templates`)."),
+    name: Optional[str] = typer.Option(None, "--name", help="Repo and project name, with --template."),
+    repo: Optional[str] = typer.Option(None, "--repo", help='"owner/name" (`foro repos`).'),
+    branch: Optional[str] = typer.Option(None, "--branch", help="Branch to deploy, with --repo."),
+    subdir: str = typer.Option(".", "--path", help="Directory holding the manifest, with --repo."),
+) -> None:
+    """Create a project from a template (deploys at once) or a repo (deploy it next)."""
+    if bool(template) == bool(repo):
+        typer.secho("✗ pass exactly one of --template or --repo", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if template and not (name and re.fullmatch(r"[a-z0-9-]{3,48}", name)):
+        typer.secho("✗ --name: 3-48 lowercase letters, digits or dashes", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if repo and not (branch and re.fullmatch(r"[^/\s]+/[^/\s]+", repo)):
+        typer.secho('✗ --repo needs "owner/name" and --branch', fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    host, creds = _require_credentials()
+    workspace = _resolve_workspace(host, creds)
+    if template:
+        row = _call(
+            host, creds.token, "POST", "/api/projects/from-template", "create the project",
+            workspace=workspace, body={"template_id": template, "name": name},
+        )
+        typer.secho(f"✓ created {row['slug']}; its first deploy is running", fg=typer.colors.GREEN)
+        typer.echo(f"  `foro deployments show --project {row['slug']}` follows it")
+        return
+    owner, repo_name = repo.split("/")
+    row = _call(
+        host, creds.token, "POST", "/api/projects", "create the project",
+        workspace=workspace,
+        body={"repo_owner": owner, "repo_name": repo_name, "repo_branch": branch, "manifest_path": subdir},
+    )
+    typer.secho(f"✓ created {row['slug']} from {repo}@{branch}", fg=typer.colors.GREEN)
+    typer.echo(f"  `foro link {row['slug']}` in a clone, then `foro deploy --repo`")
+
+
+@app.command()
+def templates(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Starter servers `foro projects create --template` can copy and deploy."""
+    host, creds = _require_credentials()
+    rows = _call(host, creds.token, "GET", "/api/templates", "list templates")
+    if as_json:
+        _print_json(rows)
+        return
+    for t in rows:
+        typer.echo(f"{t['id']:<28} {t['runtime']:<8} {t['description']}")
+
+
+@app.command()
+def repos(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Repositories you can deploy, most recently pushed first."""
+    host, creds = _require_credentials()
+    rows = _call(
+        host, creds.token, "GET", "/api/repos", "list repositories", workspace=_resolve_workspace(host, creds)
+    )
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo("no repositories found - connect a git account in the dashboard")
+    for r in rows:
+        typer.echo(f"{r['owner']}/{r['name']:<40} {r['default_branch']}{'  (private)' if r.get('private') else ''}")
+
+
+@workspace_app.command("create")
+def workspace_create(name: str = typer.Argument(..., help="Usually your team or company.")) -> None:
+    """Create a workspace you own, on the Free plan, with an example server."""
+    host, creds = _require_credentials()
+    ws = _call(host, creds.token, "POST", "/api/workspaces", "create a workspace", body={"name": name.strip()})
+    typer.secho(f"✓ created {ws['name']} ({ws['plan']} plan) - `foro workspace use {ws['id']}` to make it the default", fg=typer.colors.GREEN)
+
+
+@workspace_app.command("rename")
+def workspace_rename(name: str = typer.Argument(..., help="The new name.")) -> None:
+    """Rename the current workspace (or the one --workspace names). Owners only."""
+    host, creds = _require_credentials()
+    updated = _call(
+        host, creds.token, "PATCH", "/api/workspaces", "rename the workspace",
+        workspace=_resolve_workspace(host, creds), body={"name": name.strip()},
+    )
+    typer.secho(f"✓ renamed to {updated['name']}", fg=typer.colors.GREEN)
+
+
+@app.command()
+def incidents(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Recent alert incidents in the workspace, newest first."""
+    host, creds = _require_credentials()
+    rows = _call(
+        host, creds.token, "GET", "/api/workspaces/alerts/incidents", "list incidents",
+        workspace=_resolve_workspace(host, creds),
+    )["incidents"]
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo("no incidents")
+    for i in rows:
+        state = f"resolved {i['resolved_at']}" if i.get("resolved_at") else "still open"
+        typer.echo(f"{i['project_slug']} {i['tool']} {i['trigger']}: opened {i['opened_at']}, {state}")

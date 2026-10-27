@@ -40,6 +40,18 @@ def api(monkeypatch):
     return calls
 
 
+def test_without_a_default_the_server_picks_the_workspace(logged_in, api):
+    result = runner.invoke(app, ["repos"])
+    assert result.exit_code == 0, result.stdout
+    assert api[-1][:3] == ("GET", "/api/repos", None)
+
+
+def test_the_root_workspace_option_is_sent_as_its_id(logged_in, api):
+    result = runner.invoke(app, ["--workspace", "Side", "workspace", "rename", "Renamed"])
+    assert result.exit_code == 0, result.stdout
+    assert api[-1] == ("PATCH", "/api/workspaces", ME["workspaces"][1]["id"], {"name": "Renamed"})
+
+
 def test_rollback_starts_from_the_named_deployment(logged_in, api):
     result = runner.invoke(app, ["rollback", "d1", "--project", "p", "--detach"])
     assert result.exit_code == 0, result.stdout
