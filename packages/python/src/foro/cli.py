@@ -10,6 +10,7 @@ import uuid
 import webbrowser
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
+from urllib.parse import quote
 from pathlib import Path
 from typing import Optional
 
@@ -44,7 +45,7 @@ from foro.auth import (
     start_device_flow,
 )
 from foro.check import run_check
-from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
+from foro.deploy import DeployError, Started, get_deployment, stream_build, stream_deploy
 from foro.deploy import deploy as deploy_project
 from foro.logs import (
     latest_deployment_id,
@@ -1033,3 +1034,132 @@ def open_project(
 
     typer.echo(row["url"])
     webbrowser.open(row["url"])
+
+
+def _call(host: str, token: str, method: str, path: str, action: str, **kwargs):
+    try:
+        return _api.request(method, path, host=host, token=token, **kwargs)
+    except ApiError as err:
+        raise _fail(err, action, host, token) from None
+
+
+def _print_json(payload) -> None:
+    typer.echo(json.dumps(payload, indent=2))
+
+
+@app.command()
+def rollback(
+    deployment: str = typer.Argument(..., help="Earlier deployment to redeploy (`foro deployments`)."),
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Roll back this slug."),
+    detach: bool = typer.Option(False, "--detach", "-d", help="Don't stream; print the URL and exit."),
+) -> None:
+    """Redeploy the exact commit of an earlier, successful deployment."""
+    host, token, slug, workspace = _resolve(path, project)
+    created = _call(
+        host, token, "POST", f"/api/projects/{slug}/deployments/{quote(deployment, safe='')}/rollback",
+        "roll back", workspace=workspace,
+    )
+    row = _call(host, token, "GET", f"/api/projects/{slug}", "read the project", workspace=workspace)
+    started = Started(slug=slug, deployment_id=created["id"], url=row["url"], created=False)
+    typer.echo(f"- rolling back {slug} ({started.deployment_id[:8]})")
+    if detach:
+        typer.echo(f"  {normalize_url(started.url)}")
+        return
+    _stream_deploy(host, token, started, workspace)
+
+
+def _deployment_or_latest(host: str, token: str, slug: str, workspace: str | None, deployment: str | None) -> str:
+    try:
+        deployment = deployment or latest_deployment_id(host, token, slug, workspace=workspace)
+    except ApiError as err:
+        raise _fail(err, "read deployments", host, token) from None
+    if not deployment:
+        typer.secho(f"✗ {slug} has no deployments yet", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    return quote(deployment, safe="")
+
+
+@app.command()
+def cancel(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Cancel this slug's deployment."),
+    deployment: Optional[str] = typer.Option(
+        None, "--deployment", help="Which deployment (default: the most recent)."
+    ),
+) -> None:
+    """Stop a deployment that is still building or starting. What is live keeps serving."""
+    host, token, slug, workspace = _resolve(path, project)
+    deployment = _deployment_or_latest(host, token, slug, workspace, deployment)
+    row = _call(
+        host, token, "POST", f"/api/projects/{slug}/deployments/{deployment}/cancel", "cancel",
+        workspace=workspace,
+    )
+    typer.echo(f"deployment {row['id'][:8]} is {row['status']}")
+
+
+# Bare `foro deployments` lists; do not set no_args_is_help.
+deployments_app = typer.Typer(help="Inspect a project's deployments.")
+app.add_typer(deployments_app, name="deployments")
+
+
+@deployments_app.callback(invoke_without_command=True)
+def deployments_default(
+    ctx: typer.Context,
+    path: Path = typer.Option(Path("."), "--path", help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="List this slug's deployments."),
+    limit: int = typer.Option(10, "--limit", min=1, help="How many, newest first."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """List recent deployments, newest first."""
+    if ctx.invoked_subcommand is not None:
+        return
+    host, token, slug, workspace = _resolve(path, project)
+    try:
+        rows = list_deployments(host, token, slug, workspace=workspace)[:limit]
+    except ApiError as err:
+        raise _fail(err, "list deployments", host, token) from None
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo(f"{slug} has no deployments yet")
+    for d in rows:
+        sha = (d.get("git_sha") or "")[:7]
+        typer.echo(f"{d['id']}  {d['status']:<10} {sha:<7}  {d['created_at']}")
+        if d.get("error_message"):
+            typer.secho(f"    {d['error_message'].splitlines()[0]}", dim=True)
+
+
+@deployments_app.command("show")
+def deployments_show(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Show this slug's deployment."),
+    deployment: Optional[str] = typer.Option(
+        None, "--deployment", help="Which deployment (default: the most recent)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """One deployment's status, error and how to resolve it."""
+    host, token, slug, workspace = _resolve(path, project)
+    deployment = _deployment_or_latest(host, token, slug, workspace, deployment)
+    row = _call(
+        host, token, "GET", f"/api/projects/{slug}/deployments/{deployment}", "read the deployment",
+        workspace=workspace,
+    )
+    if as_json:
+        _print_json(row)
+        return
+    typer.echo(f"{row['id']}: {row['status']}")
+    if row.get("git_sha"):
+        typer.echo(f"  Commit:  {row['git_sha'][:12]}")
+    typer.echo(f"  Created: {row['created_at']}")
+    if row.get("finished_at"):
+        typer.echo(f"  Done:    {row['finished_at']}")
+    if row.get("error_message"):
+        typer.echo(f"  Error:   {row['error_message']}")
+    if row.get("reason"):
+        typer.echo(f"  Reason:  {row['reason']}")
+    if row.get("resolve_prompt"):
+        typer.echo(f"\nTo resolve with AI, paste:\n\n{row['resolve_prompt']}")
+    typer.echo(f"\n`foro logs --deploy --deployment {row['id']}` reads its log")

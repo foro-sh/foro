@@ -40,6 +40,13 @@ def api(monkeypatch):
     return calls
 
 
+def test_rollback_starts_from_the_named_deployment(logged_in, api):
+    result = runner.invoke(app, ["rollback", "d1", "--project", "p", "--detach"])
+    assert result.exit_code == 0, result.stdout
+    assert "rolling back p (d2)" in result.stdout
+    assert "https://p.foro.sh/mcp" in result.stdout
+
+
 def test_contains_is_sent_as_one_escaped_phrase(logged_in, api):
     result = runner.invoke(app, ["logs", "--project", "p", "--contains", 'a"b'])
     assert result.exit_code == 0, result.stdout
