@@ -309,7 +309,8 @@ def scaffold_new(dir_path: Path, fields: ManifestFields, git_init: bool = False)
         )
         write(
             dir_path / "pyproject.toml",
-            _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version),
+            _PYPROJECT_TEMPLATE.format(name=fields.name, python_version=fields.runtime_version)
+            + ("\n" + table if (table := foro_table(fields)) else ""),
         )
         write(dir_path / "README.md", _README_TEMPLATE.format(name=fields.name))
         write(dir_path / ".gitignore", _GITIGNORE_TEMPLATE)
