@@ -981,7 +981,11 @@ def projects_show(
     typer.echo(f"  Name:    {row.get('name') or '(none)'}")
     typer.echo(f"  Status:  {'building' if row.get('building') else row['status']}")
     typer.echo(f"  Source:  {row['source']}")
-    typer.echo(f"  URL:     {row['url']}")
+    if row.get("repo_owner"):
+        typer.echo(f"  Repo:    {row['repo_owner']}/{row['repo_name']}@{row['repo_branch']}")
+        typer.echo(f"  Auto-deploy: {'on' if row.get('auto_deploy') else 'off'}")
+    typer.echo(f"  URL:     {normalize_url(row['url'])}")
+    typer.echo(f"  Auth:    {row.get('auth_mode')}")
     if history:
         last = history[0]
         typer.echo(f"  Last deploy: {last['status']} at {last['created_at']} ({last['id'][:8]})")
