@@ -373,13 +373,15 @@ def verify(
 @app.command(hidden=True)
 def matrix() -> None:
     """Wake up, Neo."""
-    if not sys.stdout.isatty():
+    try:
+        from foro import _matrix
+    except ImportError:  # Windows has no stdlib curses
+        _matrix = None
+    if _matrix is None or not sys.stdout.isatty():
         from foro import _BANNER
 
         typer.echo(_BANNER.strip("\n"))
         return
-    from foro import _matrix
-
     _matrix.run()
 
 
