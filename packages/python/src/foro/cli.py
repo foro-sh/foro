@@ -8,7 +8,9 @@ import sys
 import threading
 import uuid
 import webbrowser
+from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
+from urllib.parse import quote
 from pathlib import Path
 from typing import Optional
 
@@ -43,9 +45,15 @@ from foro.auth import (
     start_device_flow,
 )
 from foro.check import run_check
-from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
+from foro.deploy import DeployError, Started, get_deployment, stream_build, stream_deploy
 from foro.deploy import deploy as deploy_project
-from foro.logs import latest_deployment_id, read_deployment, read_runtime, stream_runtime
+from foro.logs import (
+    latest_deployment_id,
+    read_deployment,
+    read_runtime,
+    stream_runtime,
+    summarize,
+)
 from foro.projects import ProjectError, get_project, list_deployments, list_projects
 from foro.projects import link as link_project
 from foro.dev import DevError, InspectorUnavailable, run_dev, start_inspector, stop
@@ -705,6 +713,9 @@ def deploy(
     project: Optional[str] = typer.Option(None, "--project", help="Deploy to this slug."),
     upload: bool = typer.Option(False, "--upload", help="Force uploading the working tree."),
     repo: bool = typer.Option(False, "--repo", help="Force building from the linked repo branch."),
+    ref: Optional[str] = typer.Option(
+        None, "--ref", help="Build this branch or tag instead of the configured branch."
+    ),
     detach: bool = typer.Option(False, "--detach", "-d", help="Don't stream; print the URL and exit."),
     skip_check: bool = typer.Option(False, "--skip-check", help="Deploy without running foro check."),
 ) -> None:
@@ -731,6 +742,7 @@ def deploy(
             force_upload=upload,
             force_repo=repo,
             workspace=workspace,
+            ref=ref,
             on_step=lambda message: typer.echo(f"- {message}"),
         )
     except (DeployError, ArchiveError) as err:
@@ -818,11 +830,27 @@ def logs(
     deployment: Optional[str] = typer.Option(
         None, "--deployment", help="Which deployment (default: the most recent)."
     ),
+    minutes: Optional[int] = typer.Option(
+        None, "--minutes", min=1, help="Read this many minutes back from --until."
+    ),
+    until: Optional[datetime] = typer.Option(
+        None, "--until", help="End of the window (ISO-8601, default: now)."
+    ),
+    contains: Optional[str] = typer.Option(
+        None, "--contains", help="Keep only lines containing this text (case-insensitive)."
+    ),
+    summary: bool = typer.Option(
+        False, "--summary", help="Digest the window: totals, error hours, recurring messages."
+    ),
+    hours: int = typer.Option(24, "--hours", min=1, max=720, help="--summary window."),
     as_json: bool = typer.Option(False, "--json", help="One JSON object per line, for jq."),
 ) -> None:
     """Show a project's runtime logs, or one deployment's deploy/build log."""
-    if deploy_log and build_log:
-        typer.secho("✗ --deploy and --build are mutually exclusive", fg=typer.colors.RED)
+    if sum([deploy_log, build_log, follow, summary]) > 1:
+        typer.secho(
+            "✗ --deploy, --build, --follow and --summary are mutually exclusive",
+            fg=typer.colors.RED,
+        )
         raise typer.Exit(code=1)
 
     host, token, slug, workspace = _resolve(path, project)
@@ -849,7 +877,29 @@ def logs(
                 typer.echo("")
             return
 
-        lines = read_runtime(host, token, slug, workspace=workspace)
+        if summary:
+            since = datetime.now(timezone.utc) - timedelta(hours=hours)
+            payload = summarize(host, token, slug, since.isoformat(), workspace=workspace)
+            _print_summary(payload, as_json)
+            return
+
+        query = {}
+        if minutes or until:
+            end = until or datetime.now(timezone.utc)
+            if end.tzinfo is None:
+                end = end.astimezone()
+            query = {
+                "from": (end - timedelta(minutes=minutes or 60)).isoformat(),
+                "to": end.isoformat(),
+            }
+        if contains:
+            # One quoted phrase, as the dashboard search sends it.
+            query["q"] = '"' + contains.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        payload = read_runtime(host, token, slug, workspace=workspace, **query)
+        lines = payload.get("lines", [])
+        if not lines and query:
+            typer.echo("no matching lines")
+            return
         if not lines:
             typer.echo(
                 "no stored logs - retention is plan-gated (24h on Free), so this is "
@@ -858,8 +908,35 @@ def logs(
             return
         for entry in lines:
             emit(entry)
+        if payload.get("complete") is False and not as_json:
+            typer.secho(
+                f"only the newest lines were kept (back to {payload.get('scanned_from')}) - "
+                "narrow --contains or --minutes to see older ones",
+                fg=typer.colors.YELLOW,
+            )
     except ApiError as err:
         raise _fail(err, "read logs", host, token) from None
+
+
+def _print_summary(s: dict, as_json: bool) -> None:
+    if as_json:
+        typer.echo(json.dumps(s))
+        return
+    typer.echo(
+        f"{s['from']} to {s['to']}: {s['lines']} lines, {s['errors']} errors, "
+        f"{s['warnings']} warnings"
+    )
+    peaks = sorted((h for h in s["hours"] if h["errors"]), key=lambda h: -h["errors"])[:3]
+    if peaks:
+        typer.echo("busiest error hours: " + ", ".join(f"{h['hour']} ({h['errors']})" for h in peaks))
+    for g in s["groups"]:
+        typer.echo(f"\n{g['level']} x{g['count']}, {g['first_seen']} to {g['last_seen']}")
+        typer.echo(f"  {g['signature']}")
+        if g.get("examples"):
+            for line in g["examples"][0].splitlines()[:8]:
+                typer.secho(f"    {line}", dim=True)
+    if s.get("groups_omitted"):
+        typer.echo(f"\n{s['groups_omitted']} rarer messages not shown")
 
 
 # Bare `foro projects` lists; do not set no_args_is_help.
@@ -905,7 +982,11 @@ def projects_show(
     typer.echo(f"  Name:    {row.get('name') or '(none)'}")
     typer.echo(f"  Status:  {'building' if row.get('building') else row['status']}")
     typer.echo(f"  Source:  {row['source']}")
-    typer.echo(f"  URL:     {row['url']}")
+    if row.get("repo_owner"):
+        typer.echo(f"  Repo:    {row['repo_owner']}/{row['repo_name']}@{row['repo_branch']}")
+        typer.echo(f"  Auto-deploy: {'on' if row.get('auto_deploy') else 'off'}")
+    typer.echo(f"  URL:     {normalize_url(row['url'])}")
+    typer.echo(f"  Auth:    {row.get('auth_mode')}")
     if history:
         last = history[0]
         typer.echo(f"  Last deploy: {last['status']} at {last['created_at']} ({last['id'][:8]})")
@@ -953,3 +1034,415 @@ def open_project(
 
     typer.echo(row["url"])
     webbrowser.open(row["url"])
+
+
+def _call(host: str, token: str, method: str, path: str, action: str, **kwargs):
+    try:
+        return _api.request(method, path, host=host, token=token, **kwargs)
+    except ApiError as err:
+        raise _fail(err, action, host, token) from None
+
+
+def _print_json(payload) -> None:
+    typer.echo(json.dumps(payload, indent=2))
+
+
+@app.command()
+def rollback(
+    deployment: str = typer.Argument(..., help="Earlier deployment to redeploy (`foro deployments`)."),
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Roll back this slug."),
+    detach: bool = typer.Option(False, "--detach", "-d", help="Don't stream; print the URL and exit."),
+) -> None:
+    """Redeploy the exact commit of an earlier, successful deployment."""
+    host, token, slug, workspace = _resolve(path, project)
+    created = _call(
+        host, token, "POST", f"/api/projects/{slug}/deployments/{quote(deployment, safe='')}/rollback",
+        "roll back", workspace=workspace,
+    )
+    row = _call(host, token, "GET", f"/api/projects/{slug}", "read the project", workspace=workspace)
+    started = Started(slug=slug, deployment_id=created["id"], url=row["url"], created=False)
+    typer.echo(f"- rolling back {slug} ({started.deployment_id[:8]})")
+    if detach:
+        typer.echo(f"  {normalize_url(started.url)}")
+        return
+    _stream_deploy(host, token, started, workspace)
+
+
+def _deployment_or_latest(host: str, token: str, slug: str, workspace: str | None, deployment: str | None) -> str:
+    try:
+        deployment = deployment or latest_deployment_id(host, token, slug, workspace=workspace)
+    except ApiError as err:
+        raise _fail(err, "read deployments", host, token) from None
+    if not deployment:
+        typer.secho(f"✗ {slug} has no deployments yet", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    return quote(deployment, safe="")
+
+
+@app.command()
+def cancel(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Cancel this slug's deployment."),
+    deployment: Optional[str] = typer.Option(
+        None, "--deployment", help="Which deployment (default: the most recent)."
+    ),
+) -> None:
+    """Stop a deployment that is still building or starting. What is live keeps serving."""
+    host, token, slug, workspace = _resolve(path, project)
+    deployment = _deployment_or_latest(host, token, slug, workspace, deployment)
+    row = _call(
+        host, token, "POST", f"/api/projects/{slug}/deployments/{deployment}/cancel", "cancel",
+        workspace=workspace,
+    )
+    typer.echo(f"deployment {row['id'][:8]} is {row['status']}")
+
+
+# Bare `foro deployments` lists; do not set no_args_is_help.
+deployments_app = typer.Typer(help="Inspect a project's deployments.")
+app.add_typer(deployments_app, name="deployments")
+
+
+@deployments_app.callback(invoke_without_command=True)
+def deployments_default(
+    ctx: typer.Context,
+    path: Path = typer.Option(Path("."), "--path", help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="List this slug's deployments."),
+    limit: int = typer.Option(10, "--limit", min=1, help="How many, newest first."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """List recent deployments, newest first."""
+    if ctx.invoked_subcommand is not None:
+        return
+    host, token, slug, workspace = _resolve(path, project)
+    try:
+        rows = list_deployments(host, token, slug, workspace=workspace)[:limit]
+    except ApiError as err:
+        raise _fail(err, "list deployments", host, token) from None
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo(f"{slug} has no deployments yet")
+    for d in rows:
+        sha = (d.get("git_sha") or "")[:7]
+        typer.echo(f"{d['id']}  {d['status']:<10} {sha:<7}  {d['created_at']}")
+        if d.get("error_message"):
+            typer.secho(f"    {d['error_message'].splitlines()[0]}", dim=True)
+
+
+@deployments_app.command("show")
+def deployments_show(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Show this slug's deployment."),
+    deployment: Optional[str] = typer.Option(
+        None, "--deployment", help="Which deployment (default: the most recent)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """One deployment's status, error and how to resolve it."""
+    host, token, slug, workspace = _resolve(path, project)
+    deployment = _deployment_or_latest(host, token, slug, workspace, deployment)
+    row = _call(
+        host, token, "GET", f"/api/projects/{slug}/deployments/{deployment}", "read the deployment",
+        workspace=workspace,
+    )
+    if as_json:
+        _print_json(row)
+        return
+    typer.echo(f"{row['id']}: {row['status']}")
+    if row.get("git_sha"):
+        typer.echo(f"  Commit:  {row['git_sha'][:12]}")
+    typer.echo(f"  Created: {row['created_at']}")
+    if row.get("finished_at"):
+        typer.echo(f"  Done:    {row['finished_at']}")
+    if row.get("error_message"):
+        typer.echo(f"  Error:   {row['error_message']}")
+    if row.get("reason"):
+        typer.echo(f"  Reason:  {row['reason']}")
+    if row.get("resolve_prompt"):
+        typer.echo(f"\nTo resolve with AI, paste:\n\n{row['resolve_prompt']}")
+    typer.echo(f"\n`foro logs --deploy --deployment {row['id']}` reads its log")
+
+
+@projects_app.command("auto-deploy")
+def projects_auto_deploy(
+    state: str = typer.Argument(..., help="on or off."),
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Change this slug."),
+) -> None:
+    """Deploy on every push to the project's branch, or only on request. Repo projects only."""
+    if state not in ("on", "off"):
+        typer.secho("✗ state must be on or off", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    host, token, slug, workspace = _resolve(path, project)
+    _call(
+        host, token, "PATCH", f"/api/projects/{slug}/auto-deploy", "change auto-deploy",
+        workspace=workspace, body={"auto_deploy": state == "on"},
+    )
+    typer.secho(f"✓ auto-deploy is {state} for {slug}", fg=typer.colors.GREEN)
+
+
+@projects_app.command("create")
+def projects_create(
+    template: Optional[str] = typer.Option(None, "--template", help="Template id (`foro templates`)."),
+    name: Optional[str] = typer.Option(None, "--name", help="Repo and project name, with --template."),
+    repo: Optional[str] = typer.Option(None, "--repo", help='"owner/name" (`foro repos`).'),
+    branch: Optional[str] = typer.Option(None, "--branch", help="Branch to deploy, with --repo."),
+    subdir: str = typer.Option(".", "--path", help="Directory holding the manifest, with --repo."),
+) -> None:
+    """Create a project from a template (deploys at once) or a repo (deploy it next)."""
+    if bool(template) == bool(repo):
+        typer.secho("✗ pass exactly one of --template or --repo", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if template and not (name and re.fullmatch(r"[a-z0-9-]{3,48}", name)):
+        typer.secho("✗ --name: 3-48 lowercase letters, digits or dashes", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    if repo and not (branch and re.fullmatch(r"[^/\s]+/[^/\s]+", repo)):
+        typer.secho('✗ --repo needs "owner/name" and --branch', fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    host, creds = _require_credentials()
+    workspace = _resolve_workspace(host, creds)
+    if template:
+        row = _call(
+            host, creds.token, "POST", "/api/projects/from-template", "create the project",
+            workspace=workspace, body={"template_id": template, "name": name},
+        )
+        typer.secho(f"✓ created {row['slug']}; its first deploy is running", fg=typer.colors.GREEN)
+        typer.echo(f"  `foro deployments show --project {row['slug']}` follows it")
+        return
+    owner, repo_name = repo.split("/")
+    row = _call(
+        host, creds.token, "POST", "/api/projects", "create the project",
+        workspace=workspace,
+        body={"repo_owner": owner, "repo_name": repo_name, "repo_branch": branch, "manifest_path": subdir},
+    )
+    typer.secho(f"✓ created {row['slug']} from {repo}@{branch}", fg=typer.colors.GREEN)
+    typer.echo(f"  `foro link {row['slug']}` in a clone, then `foro deploy --repo`")
+
+
+@app.command()
+def templates(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Starter servers `foro projects create --template` can copy and deploy."""
+    host, creds = _require_credentials()
+    rows = _call(host, creds.token, "GET", "/api/templates", "list templates")
+    if as_json:
+        _print_json(rows)
+        return
+    for t in rows:
+        typer.echo(f"{t['id']:<28} {t['runtime']:<8} {t['description']}")
+
+
+@app.command()
+def repos(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Repositories you can deploy, most recently pushed first."""
+    host, creds = _require_credentials()
+    rows = _call(
+        host, creds.token, "GET", "/api/repos", "list repositories", workspace=_resolve_workspace(host, creds)
+    )
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo("no repositories found - connect a git account in the dashboard")
+    for r in rows:
+        typer.echo(f"{r['owner']}/{r['name']:<40} {r['default_branch']}{'  (private)' if r.get('private') else ''}")
+
+
+@workspace_app.command("create")
+def workspace_create(name: str = typer.Argument(..., help="Usually your team or company.")) -> None:
+    """Create a workspace you own, on the Free plan, with an example server."""
+    host, creds = _require_credentials()
+    ws = _call(host, creds.token, "POST", "/api/workspaces", "create a workspace", body={"name": name.strip()})
+    typer.secho(f"✓ created {ws['name']} ({ws['plan']} plan) - `foro workspace use {ws['id']}` to make it the default", fg=typer.colors.GREEN)
+
+
+@workspace_app.command("rename")
+def workspace_rename(name: str = typer.Argument(..., help="The new name.")) -> None:
+    """Rename the current workspace (or the one --workspace names). Owners only."""
+    host, creds = _require_credentials()
+    updated = _call(
+        host, creds.token, "PATCH", "/api/workspaces", "rename the workspace",
+        workspace=_resolve_workspace(host, creds), body={"name": name.strip()},
+    )
+    typer.secho(f"✓ renamed to {updated['name']}", fg=typer.colors.GREEN)
+
+
+@app.command()
+def incidents(as_json: bool = typer.Option(False, "--json", help="Print the API response.")) -> None:
+    """Recent alert incidents in the workspace, newest first."""
+    host, creds = _require_credentials()
+    rows = _call(
+        host, creds.token, "GET", "/api/workspaces/alerts/incidents", "list incidents",
+        workspace=_resolve_workspace(host, creds),
+    )["incidents"]
+    if as_json:
+        _print_json(rows)
+        return
+    if not rows:
+        typer.echo("no incidents")
+    for i in rows:
+        state = f"resolved {i['resolved_at']}" if i.get("resolved_at") else "still open"
+        typer.echo(f"{i['project_slug']} {i['tool']} {i['trigger']}: opened {i['opened_at']}, {state}")
+
+
+@app.command()
+def metrics(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's metrics."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Tool-call volume, error rate, p95 latency, uptime and the busiest tools."""
+    host, token, slug, workspace = _resolve(path, project)
+    m = _call(host, token, "GET", f"/api/projects/{slug}/metrics", "read metrics", workspace=workspace)
+    if as_json:
+        _print_json(m)
+        return
+    rate = m["error_count"] / m["total_count"] if m["total_count"] else 0
+    uptime = "n/a" if m.get("uptime") is None else f"{m['uptime'] * 100:.2f}%"
+    p95 = "n/a" if m.get("p95_ms") is None else m["p95_ms"]
+    typer.echo(
+        f"{slug}, last {m['window_days']} days: {m['total_count']} calls, {rate * 100:.1f}% errors, "
+        f"p95 {p95} ms, uptime {uptime}"
+    )
+    for t in m["tools"][:10]:
+        typer.echo(f"  {t['tool']:<32} {t['count']:>8} calls {t['error_count']:>6} errors")
+    for e in m["errors"][:5]:
+        typer.secho(f"  {e['tool']}: {e['example']} (x{e['count']})", fg=typer.colors.RED)
+
+
+@app.command()
+def usage(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's usage."),
+    as_json: bool = typer.Option(False, "--json", help="Print the combined responses."),
+) -> None:
+    """Calls by client, distinct signed-in callers, and the plan's monthly cap."""
+    host, token, slug, workspace = _resolve(path, project)
+    base = f"/api/projects/{slug}"
+    row = _call(host, token, "GET", base, "read the project", workspace=workspace)
+    m = _call(host, token, "GET", f"{base}/metrics", "read metrics", workspace=workspace)
+    users = _call(host, token, "GET", f"{base}/metrics/users", "read callers", workspace=workspace)
+    cap = row.get("tool_call_usage")
+    if as_json:
+        _print_json({
+            "surfaces": m["surfaces"],
+            "distinct_callers": len(users["users"]),
+            "distinct_callers_truncated": users["truncated"],
+            "detail_days": users["detail_days"],
+            "tool_call_usage": cap,
+        })
+        return
+    for s in m["surfaces"]:
+        typer.echo(f"{s['surface']:<16} {s['count']} calls")
+    more = "+" if users["truncated"] else ""
+    typer.echo(f"{len(users['users'])}{more} distinct signed-in callers in {users['detail_days']} days")
+    typer.echo(f"plan cap: {cap['used']} of {cap['limit']} tool calls this month" if cap else "no monthly tool-call cap")
+
+
+@app.command()
+def sessions(
+    session: Optional[str] = typer.Argument(None, help="Show this session's calls in order."),
+    path: Path = typer.Option(Path("."), "--path", help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's sessions."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Recent MCP sessions with client and loop/retry flags, or one session's calls."""
+    host, token, slug, workspace = _resolve(path, project)
+    base = f"/api/projects/{slug}/metrics/sessions"
+    if session:
+        # Clients choose session ids, so they can hold a `/`.
+        s = _call(host, token, "GET", f"{base}/{quote(session, safe='')}", "read the session", workspace=workspace)
+        if as_json:
+            _print_json(s)
+            return
+        for c in s["calls"]:
+            typer.echo(f"{c['ts']} {c['tool']} {'ok' if c['ok'] else 'failed'} {c['duration_ms']} ms")
+            if c.get("error"):
+                typer.secho(f"    {c['error']}", fg=typer.colors.RED)
+        return
+    r = _call(host, token, "GET", base, "list sessions", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    if not r["sessions"]:
+        typer.echo(f"no sessions in the last {r['detail_days']} days")
+    for x in r["sessions"]:
+        client = " ".join(filter(None, [x.get("client_name") or "unknown", x.get("client_version")]))
+        flags = f" [{', '.join(x['flags'])}]" if x.get("flags") else ""
+        typer.echo(
+            f"{x['session_id']}  {client}: {x['call_count']} calls, {x['error_count']} errors, "
+            f"{x['started_at']} - {x['last_seen']}{flags}"
+        )
+
+
+@app.command()
+def scan(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's scan."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Known vulnerabilities in the project's own dependencies."""
+    host, token, slug, workspace = _resolve(path, project)
+    r = _call(host, token, "GET", f"/api/projects/{slug}/image-scan", "read the image scan", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    if r["status"] != "complete":
+        typer.echo(f"{slug}: {r['status']}" + (f" - {r['error']}" if r.get("error") else ""))
+        return
+    typer.echo(
+        f"{slug}: {r['critical']} critical, {r['high']} high, {r['medium']} medium, {r['low']} low "
+        f"(deploys blocked at {r['block_severity']})"
+    )
+    dismissed = {d["id"] for d in r.get("dismissed", [])}
+    for f in r["findings"]:
+        if f["id"] in dismissed:
+            continue
+        fix = f"fixed in {f['fixed']}" if f.get("fixed") else "no fix available"
+        typer.echo(f"  {f['id']} ({f['severity']}) {f['package']}@{f['installed']} - {fix}")
+    if r.get("resolve_prompt"):
+        typer.echo(f"\nTo resolve with AI, paste:\n\n{r['resolve_prompt']}")
+
+
+@app.command()
+def readiness(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Check this slug."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Check a live server against the ChatGPT, Claude, MCP registry and Cursor listings."""
+    host, token, slug, workspace = _resolve(path, project)
+    r = _call(host, token, "GET", f"/api/projects/{slug}/readiness", "read the readiness report", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    for store, s in r["stores"].items():
+        typer.echo(f"{store}: {s['blockers']} blockers, {s['warnings']} warnings")
+    for f in r["findings"]:
+        tool = f" ({f['tool']})" if f.get("tool") else ""
+        typer.echo(f"  [{f['severity']}] {f['rule']}{tool}: {f['detail']} - {', '.join(f['stores'])}")
+
+
+@app.command()
+def connect(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Connect this slug."),
+) -> None:
+    """How to add the deployed server to ChatGPT, Claude or Cursor."""
+    host, token, slug, workspace = _resolve(path, project)
+    row = _call(host, token, "GET", f"/api/projects/{slug}", "read the project", workspace=workspace)
+    url = normalize_url(row["url"])
+    typer.echo(f"MCP URL: {url}")
+    if row["auth_mode"] == "none":
+        typer.echo("The endpoint is public: no credentials needed.")
+    elif row["auth_mode"] == "token":
+        typer.echo("The endpoint needs its bearer token, shown in the dashboard under the project's settings.")
+    else:
+        issuer = row.get("oauth_issuer") or "the workspace identity provider"
+        client = f" with client id {row['oauth_client_id']}" if row.get("oauth_client_id") else ""
+        typer.echo(f"The endpoint uses OAuth: clients sign in through {issuer}{client}.")
+    typer.echo(f"ChatGPT: Settings → Apps & Connectors → Create, with MCP server URL {url}")
+    typer.echo(f"Claude:  Settings → Connectors → Add custom connector, with URL {url}")
+    typer.echo(f'Cursor:  .cursor/mcp.json: {{"mcpServers": {{"{slug}": {{"url": "{url}"}}}}}}')

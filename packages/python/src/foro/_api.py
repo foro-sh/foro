@@ -150,7 +150,8 @@ def explain(err: ApiError, *, action: str) -> str:
             return "finish onboarding in the dashboard first - your account has no workspace yet"
         if reason == "seat_read_only":
             return "your seat is read-only on this workspace's plan"
-        if reason == "repo_provider_not_connected":
+        # The repo and template routes send the code as `error`, not `reason`.
+        if (reason or message or "").endswith("_not_connected"):
             return "connect a repo provider in the dashboard before deploying from a repo"
         return message or f"not allowed to {action}"
     if err.status == 429:

@@ -66,6 +66,7 @@ def deploy(
     force_upload: bool = False,
     force_repo: bool = False,
     workspace: str | None = None,
+    ref: str | None = None,
     on_step=None,
 ) -> Started:
     def step(message: str) -> None:
@@ -103,7 +104,12 @@ def deploy(
                 step(f"warning: {warning}")
 
     started = _api.request(
-        "POST", f"/api/projects/{project['slug']}/deploy", host=host, token=token, workspace=workspace
+        "POST",
+        f"/api/projects/{project['slug']}/deploy",
+        host=host,
+        token=token,
+        body={"ref": ref} if ref else None,
+        workspace=workspace,
     )
     return Started(
         slug=project["slug"],
