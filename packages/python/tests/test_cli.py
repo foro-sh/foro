@@ -670,7 +670,7 @@ def test_deploy_ignores_the_directorys_link_when_project_is_overridden(logged_in
     )
     captured = {}
 
-    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, ref=None, on_step=None):
         captured["workspace"] = workspace
         return Started(slug=slug or "old-slug", deployment_id="d1", url="https://x.foro.sh", created=False)
 
@@ -694,7 +694,7 @@ def test_deploy_still_uses_the_links_workspace_when_project_matches_it(logged_in
     )
     captured = {}
 
-    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, ref=None, on_step=None):
         captured["workspace"] = workspace
         return Started(slug="swift-harbor-a3f2", deployment_id="d1", url="https://x.foro.sh", created=False)
 
@@ -717,7 +717,7 @@ def test_deploy_uses_the_directorys_linked_workspace_when_no_override_is_given(l
     )
     captured = {}
 
-    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, on_step=None):
+    def fake_deploy_project(path, host, token, *, slug=None, force_upload=False, force_repo=False, workspace=None, ref=None, on_step=None):
         captured["workspace"] = workspace
         return Started(slug="swift-harbor-a3f2", deployment_id="d1", url="https://x.foro.sh", created=False)
 

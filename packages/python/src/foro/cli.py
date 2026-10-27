@@ -705,6 +705,9 @@ def deploy(
     project: Optional[str] = typer.Option(None, "--project", help="Deploy to this slug."),
     upload: bool = typer.Option(False, "--upload", help="Force uploading the working tree."),
     repo: bool = typer.Option(False, "--repo", help="Force building from the linked repo branch."),
+    ref: Optional[str] = typer.Option(
+        None, "--ref", help="Build this branch or tag instead of the configured branch."
+    ),
     detach: bool = typer.Option(False, "--detach", "-d", help="Don't stream; print the URL and exit."),
     skip_check: bool = typer.Option(False, "--skip-check", help="Deploy without running foro check."),
 ) -> None:
@@ -731,6 +734,7 @@ def deploy(
             force_upload=upload,
             force_repo=repo,
             workspace=workspace,
+            ref=ref,
             on_step=lambda message: typer.echo(f"- {message}"),
         )
     except (DeployError, ArchiveError) as err:
