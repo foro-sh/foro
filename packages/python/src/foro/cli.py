@@ -1163,3 +1163,21 @@ def deployments_show(
     if row.get("resolve_prompt"):
         typer.echo(f"\nTo resolve with AI, paste:\n\n{row['resolve_prompt']}")
     typer.echo(f"\n`foro logs --deploy --deployment {row['id']}` reads its log")
+
+
+@projects_app.command("auto-deploy")
+def projects_auto_deploy(
+    state: str = typer.Argument(..., help="on or off."),
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Change this slug."),
+) -> None:
+    """Deploy on every push to the project's branch, or only on request. Repo projects only."""
+    if state not in ("on", "off"):
+        typer.secho("✗ state must be on or off", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    host, token, slug, workspace = _resolve(path, project)
+    _call(
+        host, token, "PATCH", f"/api/projects/{slug}/auto-deploy", "change auto-deploy",
+        workspace=workspace, body={"auto_deploy": state == "on"},
+    )
+    typer.secho(f"✓ auto-deploy is {state} for {slug}", fg=typer.colors.GREEN)
