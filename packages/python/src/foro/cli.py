@@ -370,6 +370,19 @@ def verify(
     typer.echo("Tools: " + (", ".join(tool_names) if tool_names else "(none)"))
 
 
+@app.command(hidden=True)
+def matrix() -> None:
+    """Wake up, Neo."""
+    if not sys.stdout.isatty():
+        from foro import _BANNER
+
+        typer.echo(_BANNER.strip("\n"))
+        return
+    from foro import _matrix
+
+    _matrix.run()
+
+
 auth_app = typer.Typer(no_args_is_help=True, help="Sign in to foro.sh so the CLI can act on your behalf.")
 app.add_typer(auth_app, name="auth")
 
