@@ -16,10 +16,10 @@ runner = CliRunner()
 _PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_init_output_passes_check_and_serves_via_dev(tmp_path):
+def test_init_output_passes_check_and_serves_via_dev(tmp_path, free_port):
     target = tmp_path / "roundtrip-server"
 
-    result = runner.invoke(app, ["init", str(target)], input="\n\n\n\nn\n")
+    result = runner.invoke(app, ["init", str(target)], input=f"\n\n{free_port}\n\nn\n")
     assert result.exit_code == 0, result.stdout
 
     check_result = run_check(target)
