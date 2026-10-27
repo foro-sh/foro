@@ -855,6 +855,12 @@ def logs(
             fg=typer.colors.RED,
         )
         raise typer.Exit(code=1)
+    if (minutes or until or contains) and (deploy_log or build_log or follow or summary):
+        typer.secho(
+            "✗ --minutes, --until and --contains only filter stored runtime logs",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
 
     host, token, slug, workspace = _resolve(path, project)
 

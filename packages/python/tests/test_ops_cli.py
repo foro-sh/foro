@@ -76,3 +76,9 @@ def test_until_takes_a_utc_offset(logged_in, api):
     result = runner.invoke(app, ["logs", "--project", "p", "--until", "2026-10-27T10:00:00Z"])
     assert result.exit_code == 0, result.stdout
     assert "from=2026-10-27T09%3A00%3A00%2B00%3A00&to=2026-10-27T10%3A00%3A00%2B00%3A00" in api[-1][1]
+
+
+def test_window_filters_are_refused_where_they_would_be_ignored(logged_in, api):
+    result = runner.invoke(app, ["logs", "--project", "p", "--follow", "--contains", "x"])
+    assert result.exit_code == 1
+    assert not api
