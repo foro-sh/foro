@@ -842,8 +842,10 @@ def test_projects_link_persists_the_resolved_workspace(tmp_path, monkeypatch):
 
     assert _project_link.load(tmp_path, "foro.sh").workspace == "w-1"
 
+
 def test_matrix_prints_banner_without_a_tty():
     result = runner.invoke(app, ["matrix"])
 
     assert result.exit_code == 0
     assert "██████" in result.stdout
+
