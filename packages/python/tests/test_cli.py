@@ -817,9 +817,9 @@ def test_logs_command_passes_the_linked_directorys_workspace_through(logged_in, 
     )
     captured = {}
 
-    def fake_read_runtime(host, token, slug, *, workspace=None):
+    def fake_read_runtime(host, token, slug, *, workspace=None, **query):
         captured["workspace"] = workspace
-        return [{"line": "hello"}]
+        return {"lines": [{"line": "hello"}]}
 
     monkeypatch.setattr(cli_module, "read_runtime", fake_read_runtime)
 

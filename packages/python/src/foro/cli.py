@@ -8,6 +8,7 @@ import sys
 import threading
 import uuid
 import webbrowser
+from datetime import datetime, timedelta, timezone
 from importlib.metadata import version
 from pathlib import Path
 from typing import Optional
@@ -45,7 +46,13 @@ from foro.auth import (
 from foro.check import run_check
 from foro.deploy import DeployError, get_deployment, stream_build, stream_deploy
 from foro.deploy import deploy as deploy_project
-from foro.logs import latest_deployment_id, read_deployment, read_runtime, stream_runtime
+from foro.logs import (
+    latest_deployment_id,
+    read_deployment,
+    read_runtime,
+    stream_runtime,
+    summarize,
+)
 from foro.projects import ProjectError, get_project, list_deployments, list_projects
 from foro.projects import link as link_project
 from foro.dev import DevError, InspectorUnavailable, run_dev, start_inspector, stop
@@ -822,11 +829,27 @@ def logs(
     deployment: Optional[str] = typer.Option(
         None, "--deployment", help="Which deployment (default: the most recent)."
     ),
+    minutes: Optional[int] = typer.Option(
+        None, "--minutes", min=1, help="Read this many minutes back from --until."
+    ),
+    until: Optional[datetime] = typer.Option(
+        None, "--until", help="End of the window (ISO-8601, default: now)."
+    ),
+    contains: Optional[str] = typer.Option(
+        None, "--contains", help="Keep only lines containing this text (case-insensitive)."
+    ),
+    summary: bool = typer.Option(
+        False, "--summary", help="Digest the window: totals, error hours, recurring messages."
+    ),
+    hours: int = typer.Option(24, "--hours", min=1, max=720, help="--summary window."),
     as_json: bool = typer.Option(False, "--json", help="One JSON object per line, for jq."),
 ) -> None:
     """Show a project's runtime logs, or one deployment's deploy/build log."""
-    if deploy_log and build_log:
-        typer.secho("✗ --deploy and --build are mutually exclusive", fg=typer.colors.RED)
+    if sum([deploy_log, build_log, follow, summary]) > 1:
+        typer.secho(
+            "✗ --deploy, --build, --follow and --summary are mutually exclusive",
+            fg=typer.colors.RED,
+        )
         raise typer.Exit(code=1)
 
     host, token, slug, workspace = _resolve(path, project)
@@ -853,7 +876,29 @@ def logs(
                 typer.echo("")
             return
 
-        lines = read_runtime(host, token, slug, workspace=workspace)
+        if summary:
+            since = datetime.now(timezone.utc) - timedelta(hours=hours)
+            payload = summarize(host, token, slug, since.isoformat(), workspace=workspace)
+            _print_summary(payload, as_json)
+            return
+
+        query = {}
+        if minutes or until:
+            end = until or datetime.now(timezone.utc)
+            if end.tzinfo is None:
+                end = end.astimezone()
+            query = {
+                "from": (end - timedelta(minutes=minutes or 60)).isoformat(),
+                "to": end.isoformat(),
+            }
+        if contains:
+            # One quoted phrase, as the dashboard search sends it.
+            query["q"] = '"' + contains.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        payload = read_runtime(host, token, slug, workspace=workspace, **query)
+        lines = payload.get("lines", [])
+        if not lines and query:
+            typer.echo("no matching lines")
+            return
         if not lines:
             typer.echo(
                 "no stored logs - retention is plan-gated (24h on Free), so this is "
@@ -862,8 +907,35 @@ def logs(
             return
         for entry in lines:
             emit(entry)
+        if payload.get("complete") is False and not as_json:
+            typer.secho(
+                f"only the newest lines were kept (back to {payload.get('scanned_from')}) - "
+                "narrow --contains or --minutes to see older ones",
+                fg=typer.colors.YELLOW,
+            )
     except ApiError as err:
         raise _fail(err, "read logs", host, token) from None
+
+
+def _print_summary(s: dict, as_json: bool) -> None:
+    if as_json:
+        typer.echo(json.dumps(s))
+        return
+    typer.echo(
+        f"{s['from']} to {s['to']}: {s['lines']} lines, {s['errors']} errors, "
+        f"{s['warnings']} warnings"
+    )
+    peaks = sorted((h for h in s["hours"] if h["errors"]), key=lambda h: -h["errors"])[:3]
+    if peaks:
+        typer.echo("busiest error hours: " + ", ".join(f"{h['hour']} ({h['errors']})" for h in peaks))
+    for g in s["groups"]:
+        typer.echo(f"\n{g['level']} x{g['count']}, {g['first_seen']} to {g['last_seen']}")
+        typer.echo(f"  {g['signature']}")
+        if g.get("examples"):
+            for line in g["examples"][0].splitlines()[:8]:
+                typer.secho(f"    {line}", dim=True)
+    if s.get("groups_omitted"):
+        typer.echo(f"\n{s['groups_omitted']} rarer messages not shown")
 
 
 # Bare `foro projects` lists; do not set no_args_is_help.
