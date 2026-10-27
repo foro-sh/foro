@@ -1001,6 +1001,9 @@ def projects_show(
         typer.echo(f"  Last deploy: {last['status']} at {last['created_at']} ({last['id'][:8]})")
 
 
+app.command("status")(projects_show)
+
+
 @app.command()
 def link(
     slug: str = typer.Argument(..., help="Slug of an existing project to adopt."),
