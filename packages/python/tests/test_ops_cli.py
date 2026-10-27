@@ -59,6 +59,11 @@ def test_rollback_starts_from_the_named_deployment(logged_in, api):
     assert "https://p.foro.sh/mcp" in result.stdout
 
 
+def test_a_session_id_with_a_slash_stays_one_path_segment(logged_in, api):
+    result = runner.invoke(app, ["sessions", "a/b", "--project", "p"])
+    assert result.exit_code == 0, result.stdout
+
+
 def test_contains_is_sent_as_one_escaped_phrase(logged_in, api):
     result = runner.invoke(app, ["logs", "--project", "p", "--contains", 'a"b'])
     assert result.exit_code == 0, result.stdout

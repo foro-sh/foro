@@ -1285,3 +1285,164 @@ def incidents(as_json: bool = typer.Option(False, "--json", help="Print the API 
     for i in rows:
         state = f"resolved {i['resolved_at']}" if i.get("resolved_at") else "still open"
         typer.echo(f"{i['project_slug']} {i['tool']} {i['trigger']}: opened {i['opened_at']}, {state}")
+
+
+@app.command()
+def metrics(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's metrics."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Tool-call volume, error rate, p95 latency, uptime and the busiest tools."""
+    host, token, slug, workspace = _resolve(path, project)
+    m = _call(host, token, "GET", f"/api/projects/{slug}/metrics", "read metrics", workspace=workspace)
+    if as_json:
+        _print_json(m)
+        return
+    rate = m["error_count"] / m["total_count"] if m["total_count"] else 0
+    uptime = "n/a" if m.get("uptime") is None else f"{m['uptime'] * 100:.2f}%"
+    p95 = "n/a" if m.get("p95_ms") is None else m["p95_ms"]
+    typer.echo(
+        f"{slug}, last {m['window_days']} days: {m['total_count']} calls, {rate * 100:.1f}% errors, "
+        f"p95 {p95} ms, uptime {uptime}"
+    )
+    for t in m["tools"][:10]:
+        typer.echo(f"  {t['tool']:<32} {t['count']:>8} calls {t['error_count']:>6} errors")
+    for e in m["errors"][:5]:
+        typer.secho(f"  {e['tool']}: {e['example']} (x{e['count']})", fg=typer.colors.RED)
+
+
+@app.command()
+def usage(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's usage."),
+    as_json: bool = typer.Option(False, "--json", help="Print the combined responses."),
+) -> None:
+    """Calls by client, distinct signed-in callers, and the plan's monthly cap."""
+    host, token, slug, workspace = _resolve(path, project)
+    base = f"/api/projects/{slug}"
+    row = _call(host, token, "GET", base, "read the project", workspace=workspace)
+    m = _call(host, token, "GET", f"{base}/metrics", "read metrics", workspace=workspace)
+    users = _call(host, token, "GET", f"{base}/metrics/users", "read callers", workspace=workspace)
+    cap = row.get("tool_call_usage")
+    if as_json:
+        _print_json({
+            "surfaces": m["surfaces"],
+            "distinct_callers": len(users["users"]),
+            "distinct_callers_truncated": users["truncated"],
+            "detail_days": users["detail_days"],
+            "tool_call_usage": cap,
+        })
+        return
+    for s in m["surfaces"]:
+        typer.echo(f"{s['surface']:<16} {s['count']} calls")
+    more = "+" if users["truncated"] else ""
+    typer.echo(f"{len(users['users'])}{more} distinct signed-in callers in {users['detail_days']} days")
+    typer.echo(f"plan cap: {cap['used']} of {cap['limit']} tool calls this month" if cap else "no monthly tool-call cap")
+
+
+@app.command()
+def sessions(
+    session: Optional[str] = typer.Argument(None, help="Show this session's calls in order."),
+    path: Path = typer.Option(Path("."), "--path", help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's sessions."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Recent MCP sessions with client and loop/retry flags, or one session's calls."""
+    host, token, slug, workspace = _resolve(path, project)
+    base = f"/api/projects/{slug}/metrics/sessions"
+    if session:
+        # Clients choose session ids, so they can hold a `/`.
+        s = _call(host, token, "GET", f"{base}/{quote(session, safe='')}", "read the session", workspace=workspace)
+        if as_json:
+            _print_json(s)
+            return
+        for c in s["calls"]:
+            typer.echo(f"{c['ts']} {c['tool']} {'ok' if c['ok'] else 'failed'} {c['duration_ms']} ms")
+            if c.get("error"):
+                typer.secho(f"    {c['error']}", fg=typer.colors.RED)
+        return
+    r = _call(host, token, "GET", base, "list sessions", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    if not r["sessions"]:
+        typer.echo(f"no sessions in the last {r['detail_days']} days")
+    for x in r["sessions"]:
+        client = " ".join(filter(None, [x.get("client_name") or "unknown", x.get("client_version")]))
+        flags = f" [{', '.join(x['flags'])}]" if x.get("flags") else ""
+        typer.echo(
+            f"{x['session_id']}  {client}: {x['call_count']} calls, {x['error_count']} errors, "
+            f"{x['started_at']} - {x['last_seen']}{flags}"
+        )
+
+
+@app.command()
+def scan(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Read this slug's scan."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Known vulnerabilities in the project's own dependencies."""
+    host, token, slug, workspace = _resolve(path, project)
+    r = _call(host, token, "GET", f"/api/projects/{slug}/image-scan", "read the image scan", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    if r["status"] != "complete":
+        typer.echo(f"{slug}: {r['status']}" + (f" - {r['error']}" if r.get("error") else ""))
+        return
+    typer.echo(
+        f"{slug}: {r['critical']} critical, {r['high']} high, {r['medium']} medium, {r['low']} low "
+        f"(deploys blocked at {r['block_severity']})"
+    )
+    dismissed = {d["id"] for d in r.get("dismissed", [])}
+    for f in r["findings"]:
+        if f["id"] in dismissed:
+            continue
+        fix = f"fixed in {f['fixed']}" if f.get("fixed") else "no fix available"
+        typer.echo(f"  {f['id']} ({f['severity']}) {f['package']}@{f['installed']} - {fix}")
+    if r.get("resolve_prompt"):
+        typer.echo(f"\nTo resolve with AI, paste:\n\n{r['resolve_prompt']}")
+
+
+@app.command()
+def readiness(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Check this slug."),
+    as_json: bool = typer.Option(False, "--json", help="Print the API response."),
+) -> None:
+    """Check a live server against the ChatGPT, Claude, MCP registry and Cursor listings."""
+    host, token, slug, workspace = _resolve(path, project)
+    r = _call(host, token, "GET", f"/api/projects/{slug}/readiness", "read the readiness report", workspace=workspace)
+    if as_json:
+        _print_json(r)
+        return
+    for store, s in r["stores"].items():
+        typer.echo(f"{store}: {s['blockers']} blockers, {s['warnings']} warnings")
+    for f in r["findings"]:
+        tool = f" ({f['tool']})" if f.get("tool") else ""
+        typer.echo(f"  [{f['severity']}] {f['rule']}{tool}: {f['detail']} - {', '.join(f['stores'])}")
+
+
+@app.command()
+def connect(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Connect this slug."),
+) -> None:
+    """How to add the deployed server to ChatGPT, Claude or Cursor."""
+    host, token, slug, workspace = _resolve(path, project)
+    row = _call(host, token, "GET", f"/api/projects/{slug}", "read the project", workspace=workspace)
+    url = normalize_url(row["url"])
+    typer.echo(f"MCP URL: {url}")
+    if row["auth_mode"] == "none":
+        typer.echo("The endpoint is public: no credentials needed.")
+    elif row["auth_mode"] == "token":
+        typer.echo("The endpoint needs its bearer token, shown in the dashboard under the project's settings.")
+    else:
+        issuer = row.get("oauth_issuer") or "the workspace identity provider"
+        client = f" with client id {row['oauth_client_id']}" if row.get("oauth_client_id") else ""
+        typer.echo(f"The endpoint uses OAuth: clients sign in through {issuer}{client}.")
+    typer.echo(f"ChatGPT: Settings → Apps & Connectors → Create, with MCP server URL {url}")
+    typer.echo(f"Claude:  Settings → Connectors → Add custom connector, with URL {url}")
+    typer.echo(f'Cursor:  .cursor/mcp.json: {{"mcpServers": {{"{slug}": {{"url": "{url}"}}}}}}')
