@@ -360,6 +360,27 @@
     "expect": { "ok": true }
   },
   {
+    "name": "node-mcp-use-start-script",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"scripts\": {\"build\": \"mcp-use build\", \"start\": \"mcp-use start\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-mcp-use-start-script-with-flags",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"scripts\": {\"start\": \"mcp-use start --port 3000\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
+    "name": "node-main-wins-over-mcp-use-start-script",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"main\": \"dist/index.js\", \"scripts\": {\"start\": \"mcp-use start --port 3000\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
     "name": "node-no-entry-file",
     "files": {
       "package.json": "{\"name\": \"my-server\"}"

@@ -52,6 +52,12 @@ def test_node_project_passes():
     assert result.warnings == []
 
 
+def test_mcp_use_project_passes_before_its_build():
+    result = run_check(FIXTURES / "node-mcp-use")
+
+    assert result.ok
+
+
 def test_node_project_without_an_entry_file_fails():
     result = run_check(FIXTURES / "node-no-entry")
 

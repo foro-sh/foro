@@ -35,7 +35,8 @@ def run_check(repo_dir: Path | str = ".") -> CheckResult:
     build_dir = repo_dir / manifest.build_path
 
     entrypoint_path = build_dir / manifest.entrypoint
-    if not entrypoint_path.is_file():
+    # An mcp-use entry exists only after `mcp-use build`.
+    if not manifest.start_script and not entrypoint_path.is_file():
         return CheckResult(
             ok=False,
             reason="entrypoint_file_missing",
