@@ -7,6 +7,19 @@
 * docs(python): document foro dev inspector ([ec9784e](https://github.com/foro-sh/foro/commit/ec9784e))
 * feat(python): launch MCP Inspector from foro dev ([01653b9](https://github.com/foro-sh/foro/commit/01653b9))
 
+## [0.19.0](https://github.com/foro-sh/foro/compare/v0.18.0...v0.19.0) (2026-10-28)
+
+
+### Features
+
+* **python:** accept an mcp-use start script as the node entry ([82399a7](https://github.com/foro-sh/foro/commit/82399a7e5f9a526b7d104fb22350c6373595c006))
+
+
+### Bug Fixes
+
+* **python:** catch flags after a line break in an mcp-use start script ([3d84e26](https://github.com/foro-sh/foro/commit/3d84e26c86ee4e946c680b9793c7b3edf9bde7c9))
+* **python:** spell out whitespace in the mcp-use start match ([3eaef04](https://github.com/foro-sh/foro/commit/3eaef049177ce53054f9adf49130de197faf1e3f))
+
 ## [0.18.0](https://github.com/foro-sh/foro/compare/v0.17.0...v0.18.0) (2026-10-27)
 
 
