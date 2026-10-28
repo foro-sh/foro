@@ -1,0 +1,9 @@
+{
+  "name": "node-mcp-use",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "mcp-use build",
+    "start": "mcp-use start"
+  }
+}

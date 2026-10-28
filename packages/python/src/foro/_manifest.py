@@ -94,6 +94,8 @@ KNOWN_FIELDS = {
     "egress",
 }
 
+# Recorded, never run: `mcp-use start` reads its entry from `.mcp-use/build/manifest.json`.
+MCP_USE_ENTRY = ".mcp-use/build/index.js"
 PYTHON_ENTRYPOINT_CANDIDATES = ["server.py", "main.py", "src/server.py", "app.py"]
 FALLBACK_NAME = "mcp-server"
 
@@ -116,6 +118,9 @@ class ValidatedManifest:
     port: int
     dependency_manager: str | None
     egress: list[str] | None
+    # Run `npm start` (`mcp-use start`) instead of `node <entrypoint>`; the
+    # entry is a build output, absent from the repo.
+    start_script: bool = False
 
 
 def is_valid_repo_path(p: str) -> bool:
@@ -353,6 +358,24 @@ def _declared_version_spec(doc: dict, runtime: str) -> object:
     ).get("python")
 
 
+def _mcp_use_start(doc: dict) -> bool:
+    """`scripts.start` is `mcp-use start`. Flags are refused: foro injects the
+    port and host, and `--port`/`--host` would override both."""
+    script = _table(doc, "scripts").get("start")
+    if not isinstance(script, str):
+        return False
+    match = re.fullmatch(r"mcp-use\s+start(\s.*)?", script.strip())
+    if match is None:
+        return False
+    if match.group(1) is not None:
+        raise ManifestError(
+            "`scripts.start` must be plain `mcp-use start` - foro sets the port and "
+            "host itself, and flags such as `--port` would override them",
+            "invalid_entrypoint",
+        )
+    return True
+
+
 def _entrypoint(doc: dict, runtime: str, directory: Path) -> str:
     """Resolved entry file. Unusual locations must set `entrypoint`."""
     if runtime == "node":
@@ -413,7 +436,19 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
                 "invalid_runtime",
             )
 
-    entrypoint = block["entrypoint"] if "entrypoint" in block else _entrypoint(doc, runtime, directory)
+    start_script = (
+        runtime == "node"
+        and "entrypoint" not in block
+        and "main" not in doc
+        and "bin" not in doc
+        and _mcp_use_start(doc)
+    )
+    if "entrypoint" in block:
+        entrypoint = block["entrypoint"]
+    elif start_script:
+        entrypoint = MCP_USE_ENTRY
+    else:
+        entrypoint = _entrypoint(doc, runtime, directory)
     if not isinstance(entrypoint, str) or not is_valid_repo_path(entrypoint):
         raise ManifestError(
             "`entrypoint` must be a relative path within the repo "
@@ -509,4 +544,5 @@ def parse_and_validate(build_dir: Path, manifest_path: str) -> ValidatedManifest
         port=port,
         dependency_manager=dependency_manager,
         egress=egress,
+        start_script=start_script,
     )
