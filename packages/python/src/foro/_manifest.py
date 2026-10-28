@@ -364,7 +364,13 @@ def _mcp_use_start(doc: dict) -> bool:
     script = _table(doc, "scripts").get("start")
     if not isinstance(script, str):
         return False
-    match = re.fullmatch(r"mcp-use\s+start(\s.*)?", script.strip(), re.DOTALL)
+    # Whitespace spelled out: Python and JS disagree on `\s` and on what
+    # strip()/trim() remove.
+    match = re.fullmatch(
+        r"[ \t\r\n]*mcp-use[ \t\r\n]+start(?:[ \t\r\n]+([^ \t\r\n].*?))?[ \t\r\n]*",
+        script,
+        re.DOTALL,
+    )
     if match is None:
         return False
     if match.group(1) is not None:

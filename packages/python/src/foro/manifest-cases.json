@@ -381,6 +381,20 @@
     "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
+    "name": "node-mcp-use-start-script-padded-with-whitespace",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"scripts\": {\"start\": \" mcp-use  start \\n\"}}"
+    },
+    "expect": { "ok": true }
+  },
+  {
+    "name": "node-mcp-use-start-script-with-a-unicode-space",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"scripts\": {\"start\": \"mcp-use start\\u001c\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
     "name": "node-main-wins-over-mcp-use-start-script",
     "files": {
       "package.json": "{\"name\": \"my-server\", \"main\": \"dist/index.js\", \"scripts\": {\"start\": \"mcp-use start --port 3000\"}}"
