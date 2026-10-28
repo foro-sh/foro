@@ -374,6 +374,13 @@
     "expect": { "ok": false, "reason": "invalid_entrypoint" }
   },
   {
+    "name": "node-mcp-use-start-script-with-flags-on-a-new-line",
+    "files": {
+      "package.json": "{\"name\": \"my-server\", \"scripts\": {\"start\": \"mcp-use start\\r\\n--port 3000\"}}"
+    },
+    "expect": { "ok": false, "reason": "invalid_entrypoint" }
+  },
+  {
     "name": "node-main-wins-over-mcp-use-start-script",
     "files": {
       "package.json": "{\"name\": \"my-server\", \"main\": \"dist/index.js\", \"scripts\": {\"start\": \"mcp-use start --port 3000\"}}"
