@@ -364,7 +364,7 @@ def _mcp_use_start(doc: dict) -> bool:
     script = _table(doc, "scripts").get("start")
     if not isinstance(script, str):
         return False
-    match = re.fullmatch(r"mcp-use\s+start(\s.*)?", script.strip())
+    match = re.fullmatch(r"mcp-use\s+start(\s.*)?", script.strip(), re.DOTALL)
     if match is None:
         return False
     if match.group(1) is not None:
