@@ -103,7 +103,12 @@ jobs:
           echo "$files"
 
           for package in python typescript; do
-            if printf '%s\n' "$files" | grep -q "^packages/${package}/"; then
+            pattern="^packages/${package}/"
+            # The npm package bakes in the shared manifest case table at build.
+            if [ "$package" = typescript ]; then
+              pattern="${pattern}|^packages/python/src/foro/manifest-cases\.json$"
+            fi
+            if printf '%s\n' "$files" | grep -qE "$pattern"; then
               echo "${package}=true" >> "$GITHUB_OUTPUT"
             else
               echo "${package}=false" >> "$GITHUB_OUTPUT"
