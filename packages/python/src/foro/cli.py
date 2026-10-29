@@ -32,7 +32,7 @@ from foro._manifest import (
     is_valid_repo_path,
 )
 from foro._mcp import DEFAULT_TIMEOUT as DEFAULT_HANDSHAKE_TIMEOUT
-from foro._mcp import HandshakeError, handshake, normalize_url
+from foro._mcp import HandshakeError, handshake, local_url, normalize_url
 from foro._python_project import DEPENDENCY_MANAGERS
 from foro.auth import (
     TOKEN_PREFIX,
@@ -336,7 +336,7 @@ def dev(
     inspector = None
     if inspect:
         try:
-            inspector = start_inspector(result.port)
+            inspector = start_inspector(local_url(result.port))
         except (MissingToolError, InspectorUnavailable) as err:
             typer.secho(f"warning: no inspector - {err}", fg=typer.colors.YELLOW)
 
@@ -1473,3 +1473,33 @@ def connect(
     typer.echo(f"ChatGPT: Settings → Apps & Connectors → Create, with MCP server URL {url}")
     typer.echo(f"Claude:  Settings → Connectors → Add custom connector, with URL {url}")
     typer.echo(f'Cursor:  .cursor/mcp.json: {{"mcpServers": {{"{slug}": {{"url": "{url}"}}}}}}')
+
+
+@app.command()
+def inspect(
+    path: Path = typer.Argument(Path("."), help="Linked repo directory (default: current)."),
+    project: Optional[str] = typer.Option(None, "--project", help="Inspect this slug."),
+) -> None:
+    """Open the MCP Inspector against the deployed server, through foro's gate (needs Node.js)."""
+    host, token, slug, workspace = _resolve(path, project)
+    row = _call(host, token, "GET", f"/api/projects/{slug}", "read the project", workspace=workspace)
+    bearer = None
+    if row["auth_mode"] == "token":
+        bearer = _call(
+            host, token, "GET", f"/api/projects/{slug}/token", "read the project's bearer token", workspace=workspace
+        )["token"]
+    url = normalize_url(row["url"])
+    try:
+        inspector = start_inspector(url, bearer)
+    except (MissingToolError, InspectorUnavailable) as err:
+        typer.secho(f"✗ {err}", fg=typer.colors.RED)
+        raise typer.Exit(code=1) from None
+    if row["auth_mode"] == "oauth":
+        typer.echo("The endpoint uses OAuth: the Inspector runs the sign-in when it connects.")
+    typer.echo(f"Inspecting {url}. Press Ctrl+C to stop.")
+    try:
+        inspector.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop(inspector)

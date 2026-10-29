@@ -17,7 +17,7 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def _no_real_inspector(monkeypatch):
-    monkeypatch.setattr(cli_module, "start_inspector", lambda port: _FakeProcess())
+    monkeypatch.setattr(cli_module, "start_inspector", lambda url, bearer=None: _FakeProcess())
 
 
 def test_dev_on_a_directory_with_no_manifest_names_the_reason(tmp_path):
@@ -102,15 +102,15 @@ def test_dev_lists_no_tools_as_none(tmp_path, monkeypatch):
 
 
 def test_inspector_starts_on_the_server_port_and_stops_with_it(tmp_path, monkeypatch):
-    server, inspector, ports = _FakeProcess(), _FakeProcess(), []
+    server, inspector, urls = _FakeProcess(), _FakeProcess(), []
     monkeypatch.setattr(
         cli_module, "run_dev", lambda path: (server, DevResult(port=8123, tool_names=["add"]))
     )
-    monkeypatch.setattr(cli_module, "start_inspector", lambda port: ports.append(port) or inspector)
+    monkeypatch.setattr(cli_module, "start_inspector", lambda url, bearer=None: urls.append(url) or inspector)
 
     runner.invoke(app, ["dev", str(tmp_path)])
 
-    assert ports == [8123]
+    assert urls == ["http://127.0.0.1:8123/mcp"]
     assert server.terminated and inspector.terminated
 
 
@@ -119,7 +119,7 @@ def test_once_and_no_inspect_skip_the_inspector(tmp_path, monkeypatch):
         cli_module, "run_dev", lambda path: (_FakeProcess(), DevResult(port=8000, tool_names=[]))
     )
     monkeypatch.setattr(
-        cli_module, "start_inspector", lambda port: pytest.fail("inspector must not start")
+        cli_module, "start_inspector", lambda url, bearer=None: pytest.fail("inspector must not start")
     )
 
     assert runner.invoke(app, ["dev", str(tmp_path), "--once"]).exit_code == 0
@@ -134,7 +134,7 @@ def test_missing_npx_warns_and_keeps_the_server_running(tmp_path, monkeypatch):
         cli_module, "run_dev", lambda path: (server, DevResult(port=8000, tool_names=[]))
     )
 
-    def no_npx(port):
+    def no_npx(url, bearer=None):
         raise MissingToolError("npx")
 
     monkeypatch.setattr(cli_module, "start_inspector", no_npx)
@@ -153,10 +153,11 @@ def test_inspector_needs_node_22_19(monkeypatch, version, ok):
     monkeypatch.setattr(
         dev_module, "run", lambda argv: subprocess.CompletedProcess(argv, 0, stdout=version + "\n")
     )
-    monkeypatch.setattr(dev_module, "popen", lambda argv, **kw: "started")
+    monkeypatch.setattr(dev_module, "popen", lambda argv, **kw: argv)
 
     if ok:
-        assert dev_module.start_inspector(8000) == "started"
+        argv = dev_module.start_inspector("https://p.foro.sh/mcp", "t0k")
+        assert argv[-4:] == ["--server-url", "https://p.foro.sh/mcp", "--header", "Authorization: Bearer t0k"]
     else:
         with pytest.raises(dev_module.InspectorUnavailable, match="22.19"):
-            dev_module.start_inspector(8000)
+            dev_module.start_inspector("http://127.0.0.1:8000/mcp")
