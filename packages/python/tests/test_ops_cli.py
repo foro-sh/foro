@@ -82,3 +82,39 @@ def test_window_filters_are_refused_where_they_would_be_ignored(logged_in, api):
     result = runner.invoke(app, ["logs", "--project", "p", "--follow", "--contains", "x"])
     assert result.exit_code == 1
     assert not api
+
+
+@pytest.mark.parametrize("auth_mode, bearer", [("token", "mcp-secret"), ("none", None), ("oauth", None)])
+def test_inspect_opens_the_inspector_on_the_deployed_url(logged_in, monkeypatch, auth_mode, bearer):
+
+    import foro.cli as cli_module
+
+    answers = {
+        "/api/projects/p": {"slug": "p", "url": "https://p.foro.sh", "auth_mode": auth_mode},
+        "/api/projects/p/token": {"token": "mcp-secret"},
+    }
+    asked = []
+    monkeypatch.setattr(
+        _api, "request", lambda method, path, **kw: asked.append(path) or answers[path]
+    )
+
+    class Inspector:
+        def wait(self, timeout=None):
+            if timeout is None:
+                raise KeyboardInterrupt
+            return 0
+
+        def terminate(self):
+            self.terminated = True
+
+    started = []
+    inspector = Inspector()
+    monkeypatch.setattr(cli_module, "start_inspector", lambda url, b=None: started.append((url, b)) or inspector)
+
+    result = runner.invoke(app, ["inspect", "--project", "p"])
+
+    assert result.exit_code == 0, result.stdout
+    assert started == [("https://p.foro.sh/mcp", bearer)]
+    assert ("/api/projects/p/token" in asked) == (auth_mode == "token")
+    assert inspector.terminated
+    assert "mcp-secret" not in result.stdout

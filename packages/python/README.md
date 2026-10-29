@@ -61,6 +61,7 @@ Install once with `uv tool install foro`, or run ad-hoc with
 | `foro incidents` | Recent alert incidents in the workspace |
 | `foro scan` / `foro readiness` | Known CVEs in the project's dependencies; what the ChatGPT, Claude, registry and Cursor listings would flag |
 | `foro connect` | The MCP URL and how to add it to ChatGPT, Claude or Cursor |
+| `foro inspect` | Open the MCP Inspector against the deployed server, through foro's gate. Fetches the bearer token for a token-gated project; OAuth runs in the Inspector. Needs Node.js 22.19+ |
 
 `foro logs` also takes `--minutes`, `--until`, `--contains` and `--summary`; `foro deploy` takes `--ref` to build another branch or tag. Read commands take `--json`.
 

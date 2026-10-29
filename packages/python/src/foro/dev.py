@@ -107,24 +107,17 @@ def _check_node() -> None:
     if found < INSPECTOR_MIN_NODE:
         need = ".".join(map(str, INSPECTOR_MIN_NODE))
         raise InspectorUnavailable(
-            f"Node {out} is too old for the MCP Inspector, which needs {need}+ - upgrade it, or pass --no-inspect"
+            f"Node {out} is too old for the MCP Inspector, which needs {need}+ - upgrade it"
         )
 
 
-def start_inspector(port: int) -> subprocess.Popen:
+def start_inspector(url: str, bearer: str | None = None) -> subprocess.Popen:
     _check_node()
-    return popen(
-        [
-            "npx",
-            "-y",
-            "@modelcontextprotocol/inspector",
-            "--transport",
-            "http",
-            "--server-url",
-            local_url(port),
-        ],
-        stdin=subprocess.DEVNULL,
-    )
+    argv = ["npx", "-y", "@modelcontextprotocol/inspector", "--transport", "http", "--server-url", url]
+    if bearer:
+        # A header on argv is visible in `ps`, but a catalog entry would sit in ~/.mcp-inspector/mcp.json in plaintext.
+        argv += ["--header", f"Authorization: Bearer {bearer}"]
+    return popen(argv, stdin=subprocess.DEVNULL)
 
 
 def stop(process: subprocess.Popen) -> None:
